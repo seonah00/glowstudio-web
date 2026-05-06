@@ -1,0 +1,11 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: #08080C;
+  color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+}
+a { text-decoration: none; color: inherit; }
+input::placeholder { color: rgba(255,255,255,0.25); }
+input:focus { border-color: rgba(255,107,107,0.4) !important; }
+button { font-family: inherit; }
