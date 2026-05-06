@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { searchTikTok, getTrends } from './api/tiktok'
 import VideoModal from './components/VideoModal'
 import { getDailyTrends, DailyTrendData } from './api/trends'
+import { generateScript, ScriptOutput, GenerateInput } from './api/generate'
 
 const API_BASE = 'https://glowstudio-api.up.railway.app/api'
 
@@ -424,78 +425,337 @@ function Discover() {
   )
 }
 
+/* ── Generate Result Tabs ── */
+const LOADING_MESSAGES = [
+  '🔍 레퍼런스 영상 분석 중...',
+  '✍️ 한국어 스크립트 작성 중...',
+  '🌏 영어(북미) 버전 변환 중...',
+  '📷 촬영 가이드 생성 중...',
+]
+
+function ScriptBlock({ label, content, onCopy }: { label: string; content: string; onCopy: () => void }) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.45)' }}>{label}</span>
+        <button onClick={onCopy} style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'rgba(255,142,83,0.12)', border: '1px solid rgba(255,142,83,0.28)', color: '#FF8E53', cursor: 'pointer' }}>복사</button>
+      </div>
+      <pre style={{ fontSize: 13, lineHeight: 1.85, color: 'rgba(255,255,255,0.8)', whiteSpace: 'pre-wrap', fontFamily: 'inherit', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '14px 16px', margin: 0 }}>{content}</pre>
+    </div>
+  )
+}
+
+function HashtagRow({ tags }: { tags: string[] }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+      {tags.map(t => (
+        <span key={t} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: 'rgba(255,142,83,0.08)', border: '1px solid rgba(255,142,83,0.2)', color: '#FF8E53' }}>{t}</span>
+      ))}
+    </div>
+  )
+}
+
+function KoTab({ data }: { data: ScriptOutput['ko'] }) {
+  return (
+    <div>
+      <ScriptBlock label="🎣 후킹 (0~3초)" content={data.hook} onCopy={() => navigator.clipboard.writeText(data.hook)} />
+      <ScriptBlock label="📝 본론" content={data.body} onCopy={() => navigator.clipboard.writeText(data.body)} />
+      <ScriptBlock label="📣 CTA" content={data.cta} onCopy={() => navigator.clipboard.writeText(data.cta)} />
+      <div style={{ marginBottom: 18 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.45)' }}>🏷 추천 해시태그</span>
+        <HashtagRow tags={data.hashtags} />
+      </div>
+      <button onClick={() => navigator.clipboard.writeText(data.full + '\n\n' + data.hashtags.join(' '))} style={{ width: '100%', padding: '12px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: 'rgba(255,142,83,0.12)', border: '1px solid rgba(255,142,83,0.28)', color: '#FF8E53', cursor: 'pointer' }}>
+        📋 전체 복사
+      </button>
+    </div>
+  )
+}
+
+function EnTab({ data }: { data: ScriptOutput['en'] }) {
+  return (
+    <div>
+      <ScriptBlock label="🎣 Hook (0~3s)" content={data.hook} onCopy={() => navigator.clipboard.writeText(data.hook)} />
+      <ScriptBlock label="📝 Script" content={data.body} onCopy={() => navigator.clipboard.writeText(data.body)} />
+      <ScriptBlock label="📣 CTA" content={data.cta} onCopy={() => navigator.clipboard.writeText(data.cta)} />
+      <div style={{ marginBottom: 18 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.45)' }}>🏷 Hashtags</span>
+        <HashtagRow tags={data.hashtags} />
+      </div>
+      <button onClick={() => navigator.clipboard.writeText(data.full + '\n\n' + data.hashtags.join(' '))} style={{ width: '100%', padding: '12px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: 'rgba(255,142,83,0.12)', border: '1px solid rgba(255,142,83,0.28)', color: '#FF8E53', cursor: 'pointer' }}>
+        📋 Copy All
+      </button>
+    </div>
+  )
+}
+
+function TimelineTab({ data }: { data: ScriptOutput['timing'] }) {
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr 1fr', gap: 0, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
+        {['시간', '액션', '🇰🇷 한국어 스크립트', '🇺🇸 English'].map(h => (
+          <div key={h} style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>{h}</div>
+        ))}
+        {data.map((row, i) => {
+          const bg = i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent'
+          return (
+            <React.Fragment key={i}>
+              <div style={{ padding: '12px', background: bg, fontSize: 12, color: '#FF8E53', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{row.time}</div>
+              <div style={{ padding: '12px', background: bg, fontSize: 12, color: 'rgba(255,255,255,0.5)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{row.action}</div>
+              <div style={{ padding: '12px', background: bg, fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{row.koScript}</div>
+              <div style={{ padding: '12px', background: bg, fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{row.enScript}</div>
+            </React.Fragment>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function GuideTab({ data }: { data: ScriptOutput['shootingGuide'] }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.45)', marginBottom: 10 }}>🎥 촬영 세팅</p>
+        {data.setup.map((s, i) => <p key={i} style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.7 }}>• {s}</p>)}
+      </div>
+      <div>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.45)', marginBottom: 10 }}>🎬 씬별 가이드</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {data.scenes.map((sc, i) => (
+            <div key={i} style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#FF8E53' }}>{sc.timeRange}</span>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{sc.description}</span>
+              </div>
+              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 4 }}>📹 {sc.cameraAngle}</p>
+              <p style={{ fontSize: 12, color: '#4ade80' }}>💡 {sc.tip}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.15)' }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: '#4ade80', marginBottom: 10 }}>✅ 꼭 해야 할 것</p>
+          {data.doList.map((d, i) => <p key={i} style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>• {d}</p>)}
+        </div>
+        <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(248,113,113,0.05)', border: '1px solid rgba(248,113,113,0.15)' }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: '#f87171', marginBottom: 10 }}>❌ 하면 안 되는 것</p>
+          {data.dontList.map((d, i) => <p key={i} style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>• {d}</p>)}
+        </div>
+      </div>
+      <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.45)', marginBottom: 10 }}>💡 편집 & 업로드 팁</p>
+        {data.tips.map((t, i) => <p key={i} style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>• {t}</p>)}
+      </div>
+    </div>
+  )
+}
+
 /* ── Generate ── */
 function Generate() {
   const [searchParams] = useSearchParams()
-  const [topic, setTopic] = useState(() => searchParams.get('topic') || '')
+  const [refs, setRefs] = useState<string[]>([''])
+  const [productName, setProductName] = useState('')
+  const [productUrl, setProductUrl] = useState('')
+  const [productFeatures, setProductFeatures] = useState('')
   const [tone, setTone] = useState('gen-z')
-  const [product, setProduct] = useState('')
-  const [script, setScript] = useState('')
+  const [duration, setDuration] = useState(45)
+  const [target, setTarget] = useState('Gen Z')
+  const [language, setLanguage] = useState<'both' | 'ko' | 'en'>('both')
+  const [result, setResult] = useState<ScriptOutput | null>(null)
+  const [activeResultTab, setActiveResultTab] = useState<'ko' | 'en' | 'timeline' | 'guide'>('ko')
   const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0])
 
-  const fromAnalysis = searchParams.get('ref') === 'analysis'
-  const hookType = searchParams.get('hookType')
-  const duration = searchParams.get('duration')
-
-  async function generateScript() {
-    if (!topic.trim()) return
-    setLoading(true); setScript('')
-    try {
-      const res = await fetch(`${API_BASE}/generate/script`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({topic, tone, product}), signal: AbortSignal.timeout(15000),
-      })
-      if (!res.ok) throw new Error('API 오류')
-      const data = await res.json()
-      setScript(data.script || data.content || JSON.stringify(data))
-    } catch {
-      setScript(`🎬 [훅 - 0~3초]\n"이거 진짜 써봤는데... 환불 각이었어요."\n\n🌟 [본론 - 3~25초]\nK-뷰티 ${topic || '스킨케어'}이 북미에서 폭발적인 인기를 끌고 있어요.${product ? ` 특히 ${product}은` : ''} 글래스 스킨의 핵심 비결인데요.\n성분을 보면 — 나이아신아마이드가 피부 톤을 밝혀주고, 히알루론산이 수분을 꽉 잡아줘요.\n\n💡 [핵심 팁 - 25~40초]\nGen Z 스킨케어 루틴의 포인트는 '레이어링'이에요.\n1️⃣ 토너 → 2️⃣ 앰플 → 3️⃣ 크림 순으로 얇게 겹쳐 바르세요.\n\n🔚 [CTA - 40~45초]\n댓글에 피부 타입 알려주면 맞춤 루틴 알려드릴게요! 🙌\n#kbeauty #glassskin #skincareroutine`)
+  useEffect(() => {
+    const topic = searchParams.get('topic')
+    const hookType = searchParams.get('hookType')
+    const refUrl = searchParams.get('refUrl')
+    const dur = searchParams.get('duration')
+    if (topic) setProductName(topic)
+    if (refUrl) setRefs([refUrl])
+    if (dur) setDuration(Number(dur) || 45)
+    if (hookType) {
+      const toneMap: Record<string, string> = { '궁금증형': 'gen-z', '공감형': 'storytelling', '정보형': 'tutorial', '유머형': 'funny', '전문가형': 'professional' }
+      setTone(toneMap[hookType] || 'gen-z')
     }
+  }, [searchParams])
+
+  function addRef() { if (refs.length < 3) setRefs([...refs, '']) }
+  function removeRef(i: number) { setRefs(refs.filter((_, idx) => idx !== i)) }
+  function updateRef(i: number, val: string) { setRefs(refs.map((r, idx) => idx === i ? val : r)) }
+
+  async function handleGenerate() {
+    if (!productName.trim()) return
+    setLoading(true); setResult(null)
+    let msgIdx = 0
+    setLoadingMsg(LOADING_MESSAGES[0])
+    const interval = setInterval(() => {
+      msgIdx = (msgIdx + 1) % LOADING_MESSAGES.length
+      setLoadingMsg(LOADING_MESSAGES[msgIdx])
+    }, 2500)
+    const input: GenerateInput = {
+      referenceUrls: refs.filter(r => r.trim()),
+      productName,
+      productUrl: productUrl || undefined,
+      productFeatures: productFeatures || undefined,
+      tone,
+      duration,
+      targetAudience: target,
+      language,
+      hookType: searchParams.get('hookType') || undefined,
+    }
+    const output = await generateScript(input)
+    clearInterval(interval)
+    setResult(output)
+    setActiveResultTab(language === 'en' ? 'en' : 'ko')
     setLoading(false)
   }
 
+  const inputStyle: React.CSSProperties = { width: '100%', padding: '11px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }
+  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: 7, letterSpacing: 1 }
+  const sectionStyle: React.CSSProperties = { marginBottom: 28, paddingBottom: 28, borderBottom: '1px solid rgba(255,255,255,0.06)' }
+
+  function OptionBtn({ value, current, onClick, children }: { value: string; current: string; onClick: () => void; children: React.ReactNode }) {
+    const active = value === current
+    return (
+      <button onClick={onClick} style={{ padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: active ? 600 : 400, cursor: 'pointer', background: active ? 'rgba(255,107,107,0.13)' : 'rgba(255,255,255,0.05)', border: `1px solid ${active ? 'rgba(255,107,107,0.35)' : 'rgba(255,255,255,0.1)'}`, color: active ? '#FF8E53' : 'rgba(255,255,255,0.5)' }}>
+        {children}
+      </button>
+    )
+  }
+
+  const fromAnalysis = searchParams.get('ref') === 'analysis'
+  const hookType = searchParams.get('hookType')
+
   return (
-    <div style={{ background:'#08080C', minHeight:'100vh', color:'#fff', paddingTop:60 }}>
+    <div style={{ background: '#08080C', minHeight: '100vh', color: '#fff', paddingTop: 60 }}>
       <Nav active="/generate" />
       <style>{FONTS}</style>
-      <div style={{ maxWidth:740, margin:'0 auto', padding:'44px 32px' }}>
-        <div style={{ marginBottom:36 }}>
-          <h1 style={{ fontSize:30, fontWeight:800, letterSpacing:-1, marginBottom:6 }}>AI 스크립트 생성</h1>
-          <p style={{ color:'rgba(255,255,255,0.4)', fontSize:13 }}>북미 Gen Z 트렌드에 맞는 TikTok 스크립트를 3분 안에 완성하세요</p>
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '44px 32px' }}>
+        <div style={{ marginBottom: 32 }}>
+          <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: -1, marginBottom: 6 }}>✍️ AI 스크립트 생성</h1>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>레퍼런스 영상을 분석해서 나만의 스크립트를 만드세요</p>
         </div>
+
         {fromAnalysis && hookType && (
-          <div style={{ padding:'12px 16px', borderRadius:12, marginBottom:18, background:'rgba(255,107,107,0.07)', border:'1px solid rgba(255,107,107,0.2)', fontSize:13, color:'rgba(255,255,255,0.65)' }}>
-            📊 AI 분석 결과 적용 중 &nbsp;•&nbsp; 후킹 유형: <strong style={{ color:'#FF8E53' }}>{hookType}</strong>{duration && <> &nbsp;•&nbsp; 참고 길이: <strong style={{ color:'#FF8E53' }}>{duration}초</strong></>}
+          <div style={{ padding: '12px 16px', borderRadius: 12, marginBottom: 24, background: 'rgba(255,107,107,0.07)', border: '1px solid rgba(255,107,107,0.2)', fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
+            📊 AI 분석 결과 적용 중 &nbsp;•&nbsp; 후킹 유형: <strong style={{ color: '#FF8E53' }}>{hookType}</strong>
           </div>
         )}
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <div>
-            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.4)', marginBottom:7, letterSpacing:1 }}>주제 *</label>
-            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="예: 아침 스킨케어 루틴, 선크림 추천, 앰플 사용법..." style={{ width:'100%', padding:'13px 16px', borderRadius:11, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'#fff', fontSize:13, outline:'none', boxSizing:'border-box' }} />
+
+        {/* STEP 1 */}
+        <div style={sectionStyle}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#FF8E53', letterSpacing: 1.5, marginBottom: 14 }}>STEP 1. 레퍼런스 영상</p>
+          <label style={labelStyle}>참고할 TikTok 영상 링크 (최대 3개, 선택)</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {refs.map((ref, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8 }}>
+                <input value={ref} onChange={e => updateRef(i, e.target.value)} placeholder="https://www.tiktok.com/@username/video/..." style={{ ...inputStyle, flex: 1, borderColor: ref && !ref.includes('tiktok.com') ? 'rgba(248,113,113,0.4)' : 'rgba(255,255,255,0.1)' }} />
+                {refs.length > 1 && (
+                  <button onClick={() => removeRef(i)} style={{ padding: '0 14px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 16 }}>×</button>
+                )}
+              </div>
+            ))}
+            {refs.length < 3 && (
+              <button onClick={addRef} style={{ alignSelf: 'flex-start', padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.45)', cursor: 'pointer' }}>
+                + 링크 추가
+              </button>
+            )}
           </div>
-          <div>
-            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.4)', marginBottom:7, letterSpacing:1 }}>제품명 (선택)</label>
-            <input value={product} onChange={e => setProduct(e.target.value)} placeholder="예: 코스알엑스 달팽이 에센스, 이니스프리 그린티 세럼..." style={{ width:'100%', padding:'13px 16px', borderRadius:11, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'#fff', fontSize:13, outline:'none', boxSizing:'border-box' }} />
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginTop: 8 }}>디스커버에서 "이 스타일로 만들기" 클릭 시 자동 입력됩니다</p>
+        </div>
+
+        {/* STEP 2 */}
+        <div style={sectionStyle}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#FF8E53', letterSpacing: 1.5, marginBottom: 14 }}>STEP 2. 내 제품 / 주제</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>제품명 또는 주제 *</label>
+              <input value={productName} onChange={e => setProductName(e.target.value)} placeholder="예: 라운드랩 자작나무 에센스" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>제품 링크 (선택 — 쿠팡/올리브영/아마존 등)</label>
+              <input value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="https://..." style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>제품 특징 / 어필 포인트 (선택)</label>
+              <input value={productFeatures} onChange={e => setProductFeatures(e.target.value)} placeholder="예: 수분 24시간 지속, 민감성 피부 OK, 한방 성분" style={inputStyle} />
+            </div>
           </div>
+        </div>
+
+        {/* STEP 3 */}
+        <div style={sectionStyle}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#FF8E53', letterSpacing: 1.5, marginBottom: 14 }}>STEP 3. 설정</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={labelStyle}>영상 톤</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[['gen-z', 'Gen Z 🔥'], ['professional', '전문가 💼'], ['funny', '유머 😂'], ['tutorial', '튜토리얼 📚'], ['storytelling', '스토리텔링 📖'], ['review', '리뷰어 ⭐']].map(([v, l]) => (
+                  <OptionBtn key={v} value={v} current={tone} onClick={() => setTone(v)}>{l}</OptionBtn>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>영상 길이</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[15, 30, 45, 60, 90].map(d => (
+                  <OptionBtn key={d} value={String(d)} current={String(duration)} onClick={() => setDuration(d)}>{d}초</OptionBtn>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>타겟 시청자</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[['Gen Z', 'Gen Z'], ['밀레니얼', '밀레니얼'], ['30-40대', '30-40대'], ['전체', '전체']].map(([v, l]) => (
+                  <OptionBtn key={v} value={v} current={target} onClick={() => setTarget(v)}>{l}</OptionBtn>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>출력 언어</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['both', 'ko', 'en'] as const).map((v) => {
+                  const labels = { both: '🇰🇷 한국어 + 🇺🇸 영어', ko: '🇰🇷 한국어만', en: '🇺🇸 영어만' }
+                  return <OptionBtn key={v} value={v} current={language} onClick={() => setLanguage(v)}>{labels[v]}</OptionBtn>
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button onClick={handleGenerate} disabled={loading || !productName.trim()} style={{ width: '100%', padding: '16px', borderRadius: 12, fontWeight: 700, fontSize: 15, background: loading || !productName.trim() ? 'rgba(255,107,107,0.25)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading || !productName.trim() ? 'not-allowed' : 'pointer', marginBottom: 36 }}>
+          {loading ? loadingMsg : '🎬 스크립트 생성하기'}
+        </button>
+
+        {/* 결과 */}
+        {result && (
           <div>
-            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.4)', marginBottom:7, letterSpacing:1 }}>톤</label>
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-              {[['gen-z','Gen Z 🔥'],['professional','전문가 💼'],['funny','유머 😂'],['tutorial','튜토리얼 📚']].map(([v,l]) => (
-                <button key={v} onClick={() => setTone(v)} style={{ padding:'7px 14px', borderRadius:8, fontSize:13, fontWeight:500, cursor:'pointer', background:tone===v?'rgba(255,107,107,0.13)':'rgba(255,255,255,0.05)', border:`1px solid ${tone===v?'rgba(255,107,107,0.35)':'rgba(255,255,255,0.1)'}`, color:tone===v?'#FF8E53':'rgba(255,255,255,0.5)' }}>{l}</button>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)', paddingBottom: 0 }}>
+              {([
+                ['ko', '🇰🇷 한국어'],
+                ['en', '🇺🇸 영어(북미)'],
+                ['timeline', '📋 타임라인'],
+                ['guide', '📷 촬영가이드'],
+              ] as const).filter(([key]) => {
+                if (language === 'ko' && key === 'en') return false
+                if (language === 'en' && key === 'ko') return false
+                return true
+              }).map(([key, label]) => (
+                <button key={key} onClick={() => setActiveResultTab(key)} style={{ padding: '10px 16px', borderRadius: '8px 8px 0 0', fontSize: 13, fontWeight: activeResultTab === key ? 700 : 500, cursor: 'pointer', background: activeResultTab === key ? 'rgba(255,107,107,0.1)' : 'transparent', border: `1px solid ${activeResultTab === key ? 'rgba(255,107,107,0.3)' : 'transparent'}`, borderBottom: activeResultTab === key ? '1px solid #08080C' : '1px solid transparent', color: activeResultTab === key ? '#FF8E53' : 'rgba(255,255,255,0.4)', marginBottom: -1 }}>
+                  {label}
+                </button>
               ))}
             </div>
-          </div>
-          <button onClick={generateScript} disabled={loading||!topic.trim()} style={{ padding:'14px', borderRadius:12, fontWeight:700, fontSize:14, background:loading||!topic.trim()?'rgba(255,107,107,0.25)':'linear-gradient(135deg,#FF6B6B,#FF8E53)', color:'#fff', border:'none', cursor:loading||!topic.trim()?'not-allowed':'pointer', marginTop:6 }}>
-            {loading ? '스크립트 생성 중...' : '✍️ 스크립트 생성'}
-          </button>
-        </div>
-        {script && (
-          <div style={{ marginTop:28, padding:22, borderRadius:16, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-              <h3 style={{ fontWeight:700, fontSize:14 }}>생성된 스크립트</h3>
-              <button onClick={() => navigator.clipboard.writeText(script)} style={{ padding:'5px 12px', borderRadius:7, fontSize:12, fontWeight:600, background:'rgba(255,142,83,0.12)', border:'1px solid rgba(255,142,83,0.28)', color:'#FF8E53', cursor:'pointer' }}>복사</button>
+
+            <div style={{ padding: '4px 0' }}>
+              {activeResultTab === 'ko' && <KoTab data={result.ko} />}
+              {activeResultTab === 'en' && <EnTab data={result.en} />}
+              {activeResultTab === 'timeline' && <TimelineTab data={result.timing} />}
+              {activeResultTab === 'guide' && <GuideTab data={result.shootingGuide} />}
             </div>
-            <pre style={{ fontSize:13, lineHeight:1.85, color:'rgba(255,255,255,0.7)', whiteSpace:'pre-wrap', fontFamily:'inherit' }}>{script}</pre>
           </div>
         )}
       </div>
