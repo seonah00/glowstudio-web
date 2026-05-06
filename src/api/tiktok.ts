@@ -73,7 +73,7 @@ export async function searchTikTok(hashtag: string, limit = 12): Promise<Video[]
   return items.map(mapItem)
 }
 
-export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit = 20): Promise<Video[]> {
+export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit = 30): Promise<Video[]> {
   const hashtagMap = {
     beauty: ['kbeauty', 'skincare', 'glassskin', 'grwm', 'makeuptutorial'],
     lifestyle: ['lifestyle', 'morningroutine', 'dayinmylife', 'wellness'],

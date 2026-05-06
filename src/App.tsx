@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { searchTikTok, getTrends } from './api/tiktok'
 import VideoModal from './components/VideoModal'
+import { getDailyTrends, DailyTrendData } from './api/trends'
 
 const API_BASE = 'https://glowstudio-api.up.railway.app/api'
 
@@ -218,6 +219,64 @@ function SkeletonGrid() {
   )
 }
 
+function TrendSidebar({ category, onClickTag }: { category: Category; onClickTag: (tag: string) => void }) {
+  const trends: DailyTrendData = getDailyTrends(category)
+  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  const changeIcon = (change: string) => {
+    if (change === 'up') return <span style={{ color: '#4ade80', fontWeight: 700 }}>↑</span>
+    if (change === 'down') return <span style={{ color: '#f87171', fontWeight: 700 }}>↓</span>
+    if (change === 'new') return <span style={{ fontSize: 10, background: 'rgba(255,142,83,0.2)', color: '#FF8E53', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>NEW</span>
+    return <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>
+  }
+
+  return (
+    <div style={{ position: 'sticky', top: 80, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 14, fontWeight: 800, marginBottom: 3 }}>📈 실시간 트렌드</p>
+        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{today} 기준</p>
+      </div>
+
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#FF8E53', letterSpacing: 0.5, marginBottom: 10 }}>🔥 인기 해시태그</p>
+      <div style={{ marginBottom: 20 }}>
+        {trends.topHashtags.map((item, i) => (
+          <button
+            key={item.tag}
+            onClick={() => onClickTag(item.tag)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px', borderRadius: 8, marginBottom: 4, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', width: 14, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: 600, flex: 1 }}>{item.tag}</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{item.count}</span>
+            <span style={{ fontSize: 12, width: 20, textAlign: 'center', flexShrink: 0 }}>{changeIcon(item.change)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16, marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, marginBottom: 10 }}>🌡 떠오르는 키워드</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {trends.risingKeywords.map(kw => (
+            <button
+              key={kw}
+              onClick={() => onClickTag('#' + kw)}
+              style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,107,107,0.07)', border: '1px solid rgba(255,107,107,0.15)', color: 'rgba(255,255,255,0.6)' }}
+            >
+              ↑ {kw}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
+        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>⏱ 마지막 업데이트: {trends.updatedAt}</p>
+      </div>
+    </div>
+  )
+}
+
 function Discover() {
   const [activeTab, setActiveTab] = useState<TabType>('beauty')
   const [query, setQuery] = useState('kbeauty')
@@ -234,7 +293,7 @@ function Discover() {
   async function loadCategory(cat: Category) {
     setLoading(true); setApiError(null); setVideos([])
     try {
-      const data = await getTrends(cat, 12)
+      const data = await getTrends(cat)
       if (!data.length) throw new Error('결과 없음')
       setVideos(data); setApiConnected(true)
     } catch (err: unknown) {
@@ -248,7 +307,7 @@ function Discover() {
     const q = keyword ?? query
     setLoading(true); setApiError(null); setVideos([])
     try {
-      const data = await searchTikTok(q, 12)
+      const data = await searchTikTok(q, 30)
       if (!data.length) throw new Error('결과 없음')
       setVideos(data); setApiConnected(true)
     } catch (err: unknown) {
@@ -279,13 +338,13 @@ function Discover() {
     { key: 'search', label: '🔍 키워드 검색' },
   ]
 
-  const catInfo = activeTab !== 'search' ? CATEGORY_HASHTAGS[activeTab] : null
+  const showSidebar = activeTab !== 'search'
 
   return (
     <div style={{ background: '#08080C', minHeight: '100vh', color: '#fff', paddingTop: 60 }}>
       <Nav active="/discover" />
       <style>{FONTS}</style>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '36px 32px' }}>
+      <div style={{ maxWidth: 1400, margin: '0 auto', padding: '36px 32px' }}>
 
         {/* 헤더 */}
         <div style={{ marginBottom: 24 }}>
@@ -293,7 +352,7 @@ function Discover() {
           <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>북미 K-뷰티 TikTok 트렌드를 실시간으로 탐색하세요</p>
         </div>
 
-        {/* 탭 */}
+        {/* 탭 + 연결 상태 */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
           {tabs.map(t => (
             <button key={t.key} onClick={() => switchTab(t.key)} style={{
@@ -309,32 +368,11 @@ function Discover() {
           </div>
         </div>
 
-        {/* 카테고리 탭: 인기 해시태그 뱃지 */}
-        {catInfo && (
-          <div style={{ marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>🔥 인기 해시태그</span>
-            {catInfo.topTags.map(({ tag, count }) => (
-              <button key={tag} onClick={() => clickHashtag(tag)} style={{
-                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                background: 'rgba(255,142,83,0.08)', border: '1px solid rgba(255,142,83,0.22)',
-                color: '#FF8E53',
-              }}>
-                {tag} <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>{count}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* 키워드 검색 탭 */}
+        {/* 키워드 검색 탭 입력창 */}
         {activeTab === 'search' && (
           <div style={{ display: 'flex', gap: 10, marginBottom: 20, maxWidth: 520 }}>
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && search()}
-              placeholder="#kbeauty, #grwm, #skincare ..."
-              style={{ flex: 1, padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, color: '#fff', outline: 'none' }}
-            />
+            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="#kbeauty, #grwm, #skincare ..."
+              style={{ flex: 1, padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, color: '#fff', outline: 'none' }} />
             <button onClick={() => search()} disabled={loading} style={{ padding: '10px 22px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: loading ? 'rgba(255,107,107,0.3)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
               {loading ? '검색 중...' : '검색'}
             </button>
@@ -347,14 +385,38 @@ function Discover() {
           </div>
         )}
 
-        {/* 영상 그리드 */}
-        {loading ? <SkeletonGrid /> : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(185px,1fr))', gap: 14 }}>
-            {videos.map(v => (
-              <VideoCard key={v.id} v={v} onClick={() => setSelected(v)} />
-            ))}
+        {/* 2단 레이아웃: 그리드 + 사이드바 */}
+        <div style={{ display: 'grid', gridTemplateColumns: showSidebar ? '1fr 260px' : '1fr', gap: 24, alignItems: 'start' }}>
+          {/* 좌측: 영상 그리드 */}
+          <div>
+            {loading
+              ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
+                  {Array.from({ length: 30 }).map((_, i) => (
+                    <div key={i} style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+                      <div style={{ aspectRatio: '9/16', background: 'rgba(255,255,255,0.05)' }} />
+                      <div style={{ padding: 12 }}>
+                        <div style={{ height: 11, background: 'rgba(255,255,255,0.07)', borderRadius: 4, marginBottom: 8 }} />
+                        <div style={{ height: 9, width: '55%', background: 'rgba(255,255,255,0.05)', borderRadius: 4 }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
+                  {videos.map(v => (
+                    <VideoCard key={v.id} v={v} onClick={() => setSelected(v)} />
+                  ))}
+                </div>
+            }
           </div>
-        )}
+
+          {/* 우측: 실시간 트렌드 사이드바 */}
+          {showSidebar && (
+            <TrendSidebar
+              category={activeTab as Category}
+              onClickTag={clickHashtag}
+            />
+          )}
+        </div>
       </div>
 
       {selected && <VideoModal video={selected} onClose={() => setSelected(null)} />}
