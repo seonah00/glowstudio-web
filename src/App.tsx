@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Link, useNavigate } from 'react-router-dom'
-
-const API_BASE = 'https://glowstudio-api.up.railway.app/api'
+import { searchTikTok } from './api/tiktok'
 
 function formatCount(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -111,34 +110,6 @@ function Home() {
         </div>
       </div>
 
-      {/* Pricing */}
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '20px 32px 100px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 52 }}>
-          <p style={{ color: '#FF8E53', fontSize: 11, fontWeight: 700, letterSpacing: 2, marginBottom: 10 }}>PRICING</p>
-          <h2 style={{ fontSize: 36, fontWeight: 800, letterSpacing: -1 }}>요금제</h2>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 18 }}>
-          {[
-            { tag: '무료 플랜', price: '$0', period: '/월', features: ['기본 콘텐츠 아카이브', '주간 트렌드 이메일', '제한적 AI 스크립트 (3회/월)'], popular: false, cta: '무료로 시작' },
-            { tag: '가장 인기', price: '$29', period: '/월', features: ['전체 아카이브 + 실시간', '무제한 AI 스크립트', '제품 링크 분석', '전환율 분석'], popular: true, cta: 'Pro 시작하기' },
-            { tag: '팀용', price: '$79', period: '/월', features: ['Pro의 모든 기능', '팀 협업 (최대 5인)', 'API 접근', '전담 지원'], popular: false, cta: '팀 플랜 시작' },
-          ].map(plan => (
-            <div key={plan.tag} style={{
-              background: plan.popular ? 'rgba(255,107,107,0.07)' : 'rgba(255,255,255,0.03)',
-              border: `1px solid ${plan.popular ? 'rgba(255,107,107,0.35)' : 'rgba(255,255,255,0.07)'}`,
-              borderRadius: 20, padding: 28, transform: plan.popular ? 'scale(1.03)' : 'none',
-            }}>
-              <div style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, marginBottom: 18, background: plan.popular ? 'linear-gradient(135deg,#FF6B6B,#FF8E53)' : 'rgba(255,255,255,0.07)', color: plan.popular ? '#fff' : 'rgba(255,255,255,0.5)' }}>{plan.tag}</div>
-              <div style={{ fontSize: 40, fontWeight: 800, marginBottom: 4 }}>{plan.price}<span style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>{plan.period}</span></div>
-              <ul style={{ listStyle: 'none', padding: 0, margin: '20px 0 24px', fontSize: 13, lineHeight: 2.2 }}>
-                {plan.features.map(f => <li key={f} style={{ color: 'rgba(255,255,255,0.55)', display: 'flex', gap: 8 }}><span style={{ color: '#FF8E53' }}>✓</span>{f}</li>)}
-              </ul>
-              <Link to="/discover" style={{ display: 'block', textAlign: 'center', padding: '12px', borderRadius: 10, fontWeight: 600, fontSize: 14, background: plan.popular ? 'linear-gradient(135deg,#FF6B6B,#FF8E53)' : 'rgba(255,255,255,0.07)', color: '#fff', border: plan.popular ? 'none' : '1px solid rgba(255,255,255,0.1)' }}>{plan.cta}</Link>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <footer style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '36px 32px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>
         <p style={{ fontWeight: 800, fontSize: 15, marginBottom: 6, color: '#fff' }}>GLOWSTUDIO AI</p>
         <p>북미 K-뷰티 콘텐츠 크리에이터를 위한 AI 운영체제</p>
@@ -170,24 +141,15 @@ function Discover() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(5000) })
-      .then(r => r.ok && setApiConnected(true)).catch(() => {})
     search()
   }, [])
 
   async function search() {
     setLoading(true); setApiError(null)
     try {
-      const res = await fetch(`${API_BASE}/tiktok/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hashtag: query.replace(/^#/, ''), limit: 12 }),
-        signal: AbortSignal.timeout(10000),
-      })
-      if (!res.ok) throw new Error(`API ${res.status}`)
-      const data = await res.json()
-      if (!data.videos?.length) throw new Error('결과 없음')
-      setVideos(data.videos); setApiConnected(true)
+      const data = await searchTikTok(query, 12)
+      if (!data.length) throw new Error('결과 없음')
+      setVideos(data); setApiConnected(true)
     } catch (err: unknown) {
       setApiError(err instanceof Error ? err.message : String(err))
       setApiConnected(false); setVideos(SAMPLE_VIDEOS)
