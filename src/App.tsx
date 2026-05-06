@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { searchTikTok } from './api/tiktok'
+import { searchTikTok, getTrends } from './api/tiktok'
 import VideoModal from './components/VideoModal'
 
 const API_BASE = 'https://glowstudio-api.up.railway.app/api'
@@ -134,7 +134,92 @@ const SAMPLE_VIDEOS: Video[] = [
   { id:'8', text:'세상에서 제일 촉촉한 스킨케어 루틴 #moisture', authorMeta:{name:'hydrationqueen'}, videoMeta:{duration:43}, playCount:2100000, diggCount:158000, commentCount:3700, shareCount:18000 },
 ]
 
+const CATEGORY_HASHTAGS = {
+  beauty: {
+    label: '💄 뷰티',
+    topTags: [
+      { tag: '#kbeauty', count: '2.4M' },
+      { tag: '#glassskin', count: '1.8M' },
+      { tag: '#grwm', count: '1.2M' },
+      { tag: '#skincare', count: '980K' },
+      { tag: '#koreanmakeup', count: '760K' },
+    ],
+  },
+  lifestyle: {
+    label: '🌿 라이프스타일',
+    topTags: [
+      { tag: '#morningroutine', count: '3.1M' },
+      { tag: '#dayinmylife', count: '2.7M' },
+      { tag: '#wellness', count: '1.9M' },
+      { tag: '#selfcare', count: '1.4M' },
+      { tag: '#routinevlog', count: '890K' },
+    ],
+  },
+  vlog: {
+    label: '🎬 Vlog',
+    topTags: [
+      { tag: '#vlog', count: '4.2M' },
+      { tag: '#koreandaily', count: '1.6M' },
+      { tag: '#seoulvlog', count: '1.1M' },
+      { tag: '#studyvlog', count: '870K' },
+      { tag: '#koreanlifestyle', count: '640K' },
+    ],
+  },
+} as const
+
+type Category = keyof typeof CATEGORY_HASHTAGS
+type TabType = Category | 'search'
+
+function VideoCard({ v, onClick }: { v: Video; onClick: () => void }) {
+  function er() {
+    return v.playCount ? (((v.diggCount + (v.commentCount || 0)) / v.playCount) * 100).toFixed(1) + '%' : '0%'
+  }
+  return (
+    <div onClick={onClick} style={{ borderRadius: 14, overflow: 'hidden', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
+      onMouseEnter={e => { const d = e.currentTarget as HTMLDivElement; d.style.borderColor = 'rgba(255,107,107,0.3)'; d.style.transform = 'translateY(-3px)'; d.style.boxShadow = '0 12px 32px rgba(255,107,107,0.1)' }}
+      onMouseLeave={e => { const d = e.currentTarget as HTMLDivElement; d.style.borderColor = 'rgba(255,255,255,0.07)'; d.style.transform = 'none'; d.style.boxShadow = 'none' }}>
+      <div style={{ aspectRatio: '9/16', position: 'relative', background: 'linear-gradient(135deg,rgba(255,107,107,0.12),rgba(255,142,83,0.08))', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {v.videoMeta.coverUrl
+          ? <img src={v.videoMeta.coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+          : <span style={{ fontSize: 32, opacity: 0.4 }}>▶</span>}
+        <div style={{ position: 'absolute', bottom: 7, right: 7, background: 'rgba(0,0,0,0.65)', borderRadius: 5, padding: '2px 6px', fontSize: 10, color: '#fff' }}>
+          {Math.floor(v.videoMeta.duration / 60)}:{(v.videoMeta.duration % 60).toString().padStart(2, '0')}
+        </div>
+        <div style={{ position: 'absolute', top: 7, left: 7, background: 'rgba(0,0,0,0.65)', borderRadius: 5, padding: '2px 7px', fontSize: 10, color: '#fff' }}>
+          👁 {formatCount(v.playCount)}
+        </div>
+      </div>
+      <div style={{ padding: '11px 11px 13px' }}>
+        <p style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.8)', lineHeight: 1.4, marginBottom: 7, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{v.text}</p>
+        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 7 }}>@{v.authorMeta.name}</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+          <span>❤️ {formatCount(v.diggCount)}</span>
+          {v.commentCount != null && <span>💬 {formatCount(v.commentCount)}</span>}
+          <span style={{ color: '#FF8E53', fontWeight: 700 }}>{er()}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SkeletonGrid() {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(185px,1fr))', gap: 14 }}>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+          <div style={{ aspectRatio: '9/16', background: 'rgba(255,255,255,0.05)' }} />
+          <div style={{ padding: 12 }}>
+            <div style={{ height: 11, background: 'rgba(255,255,255,0.07)', borderRadius: 4, marginBottom: 8 }} />
+            <div style={{ height: 9, width: '55%', background: 'rgba(255,255,255,0.05)', borderRadius: 4 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Discover() {
+  const [activeTab, setActiveTab] = useState<TabType>('beauty')
   const [query, setQuery] = useState('kbeauty')
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(false)
@@ -143,13 +228,13 @@ function Discover() {
   const [selected, setSelected] = useState<Video | null>(null)
 
   useEffect(() => {
-    search()
+    loadCategory('beauty')
   }, [])
 
-  async function search() {
-    setLoading(true); setApiError(null)
+  async function loadCategory(cat: Category) {
+    setLoading(true); setApiError(null); setVideos([])
     try {
-      const data = await searchTikTok(query, 12)
+      const data = await getTrends(cat, 12)
       if (!data.length) throw new Error('결과 없음')
       setVideos(data); setApiConnected(true)
     } catch (err: unknown) {
@@ -159,81 +244,120 @@ function Discover() {
     setLoading(false)
   }
 
-  function er(v: Video) {
-    return v.playCount ? (((v.diggCount + (v.commentCount||0)) / v.playCount) * 100).toFixed(1) + '%' : '0%'
+  async function search(keyword?: string) {
+    const q = keyword ?? query
+    setLoading(true); setApiError(null); setVideos([])
+    try {
+      const data = await searchTikTok(q, 12)
+      if (!data.length) throw new Error('결과 없음')
+      setVideos(data); setApiConnected(true)
+    } catch (err: unknown) {
+      setApiError(err instanceof Error ? err.message : String(err))
+      setApiConnected(false); setVideos(SAMPLE_VIDEOS)
+    }
+    setLoading(false)
   }
+
+  function switchTab(tab: TabType) {
+    setActiveTab(tab)
+    setVideos([])
+    if (tab === 'search') return
+    loadCategory(tab)
+  }
+
+  function clickHashtag(tag: string) {
+    const kw = tag.replace(/^#/, '')
+    setQuery(kw)
+    setActiveTab('search')
+    search(kw)
+  }
+
+  const tabs: { key: TabType; label: string }[] = [
+    { key: 'beauty', label: '💄 뷰티' },
+    { key: 'lifestyle', label: '🌿 라이프스타일' },
+    { key: 'vlog', label: '🎬 Vlog' },
+    { key: 'search', label: '🔍 키워드 검색' },
+  ]
+
+  const catInfo = activeTab !== 'search' ? CATEGORY_HASHTAGS[activeTab] : null
 
   return (
     <div style={{ background: '#08080C', minHeight: '100vh', color: '#fff', paddingTop: 60 }}>
       <Nav active="/discover" />
       <style>{FONTS}</style>
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '36px 32px' }}>
-        <div style={{ marginBottom: 28 }}>
+
+        {/* 헤더 */}
+        <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: -1, marginBottom: 6 }}>트렌드 디스커버</h1>
           <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>북미 K-뷰티 TikTok 트렌드를 실시간으로 탐색하세요</p>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: apiConnected ? 'rgba(34,197,94,0.1)' : 'rgba(255,107,107,0.1)', border: `1px solid ${apiConnected ? 'rgba(34,197,94,0.25)' : 'rgba(255,107,107,0.25)'}`, color: apiConnected ? '#4ade80' : '#FF6B6B' }}>
+        {/* 탭 */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+          {tabs.map(t => (
+            <button key={t.key} onClick={() => switchTab(t.key)} style={{
+              padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              background: activeTab === t.key ? 'rgba(255,107,107,0.13)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${activeTab === t.key ? 'rgba(255,107,107,0.35)' : 'rgba(255,255,255,0.08)'}`,
+              color: activeTab === t.key ? '#FF8E53' : 'rgba(255,255,255,0.5)',
+            }}>{t.label}</button>
+          ))}
+          <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: apiConnected ? 'rgba(34,197,94,0.1)' : 'rgba(255,107,107,0.1)', border: `1px solid ${apiConnected ? 'rgba(34,197,94,0.25)' : 'rgba(255,107,107,0.25)'}`, color: apiConnected ? '#4ade80' : '#FF6B6B' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: apiConnected ? '#4ade80' : '#FF6B6B', display: 'inline-block' }} />
             {apiConnected ? 'TikTok 실시간 연동' : '샘플 데이터'}
           </div>
-          <div style={{ flex: 1, display: 'flex', gap: 10, maxWidth: 480 }}>
-            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="#kbeauty, #grwm, #skincare ..."
-              style={{ flex:1, padding:'10px 16px', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, fontSize:13, color:'#fff', outline:'none' }} />
-            <button onClick={search} disabled={loading} style={{ padding:'10px 22px', borderRadius:10, fontWeight:600, fontSize:13, background:loading?'rgba(255,107,107,0.3)':'linear-gradient(135deg,#FF6B6B,#FF8E53)', color:'#fff', border:'none', cursor:loading?'not-allowed':'pointer' }}>
+        </div>
+
+        {/* 카테고리 탭: 인기 해시태그 뱃지 */}
+        {catInfo && (
+          <div style={{ marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>🔥 인기 해시태그</span>
+            {catInfo.topTags.map(({ tag, count }) => (
+              <button key={tag} onClick={() => clickHashtag(tag)} style={{
+                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                background: 'rgba(255,142,83,0.08)', border: '1px solid rgba(255,142,83,0.22)',
+                color: '#FF8E53',
+              }}>
+                {tag} <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 키워드 검색 탭 */}
+        {activeTab === 'search' && (
+          <div style={{ display: 'flex', gap: 10, marginBottom: 20, maxWidth: 520 }}>
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && search()}
+              placeholder="#kbeauty, #grwm, #skincare ..."
+              style={{ flex: 1, padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, color: '#fff', outline: 'none' }}
+            />
+            <button onClick={() => search()} disabled={loading} style={{ padding: '10px 22px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: loading ? 'rgba(255,107,107,0.3)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
               {loading ? '검색 중...' : '검색'}
             </button>
           </div>
-        </div>
+        )}
 
-        {apiError && <div style={{ padding:'10px 14px', borderRadius:10, marginBottom:18, fontSize:12, background:'rgba(255,107,107,0.07)', border:'1px solid rgba(255,107,107,0.18)', color:'rgba(255,255,255,0.45)' }}>⚠️ {apiError} — 샘플 데이터 표시 중</div>}
-
-        {loading ? (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(185px,1fr))', gap:14 }}>
-            {Array.from({length:8}).map((_,i) => (
-              <div key={i} style={{ borderRadius:14, overflow:'hidden', border:'1px solid rgba(255,255,255,0.06)', background:'rgba(255,255,255,0.02)' }}>
-                <div style={{ aspectRatio:'9/16', background:'rgba(255,255,255,0.05)' }} />
-                <div style={{ padding:12 }}>
-                  <div style={{ height:11, background:'rgba(255,255,255,0.07)', borderRadius:4, marginBottom:8 }} />
-                  <div style={{ height:9, width:'55%', background:'rgba(255,255,255,0.05)', borderRadius:4 }} />
-                </div>
-              </div>
-            ))}
+        {apiError && (
+          <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 18, fontSize: 12, background: 'rgba(255,107,107,0.07)', border: '1px solid rgba(255,107,107,0.18)', color: 'rgba(255,255,255,0.45)' }}>
+            ⚠️ {apiError} — 샘플 데이터 표시 중
           </div>
-        ) : (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(185px,1fr))', gap:14 }}>
+        )}
+
+        {/* 영상 그리드 */}
+        {loading ? <SkeletonGrid /> : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(185px,1fr))', gap: 14 }}>
             {videos.map(v => (
-              <div key={v.id} onClick={() => setSelected(v)} style={{ borderRadius:14, overflow:'hidden', cursor:'pointer', border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.02)', transition:'all 0.2s' }}
-                onMouseEnter={e => { const d = e.currentTarget as HTMLDivElement; d.style.borderColor='rgba(255,107,107,0.3)'; d.style.transform='translateY(-3px)'; d.style.boxShadow='0 12px 32px rgba(255,107,107,0.1)' }}
-                onMouseLeave={e => { const d = e.currentTarget as HTMLDivElement; d.style.borderColor='rgba(255,255,255,0.07)'; d.style.transform='none'; d.style.boxShadow='none' }}>
-                <div style={{ aspectRatio:'9/16', position:'relative', background:v.videoMeta.coverUrl ? `url(${v.videoMeta.coverUrl}) center/cover` : 'linear-gradient(135deg,rgba(255,107,107,0.12),rgba(255,142,83,0.08))', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  {!v.videoMeta.coverUrl && <span style={{ fontSize:32, opacity:0.4 }}>▶</span>}
-                  <div style={{ position:'absolute', bottom:7, right:7, background:'rgba(0,0,0,0.65)', borderRadius:5, padding:'2px 6px', fontSize:10, color:'#fff' }}>
-                    {Math.floor(v.videoMeta.duration/60)}:{(v.videoMeta.duration%60).toString().padStart(2,'0')}
-                  </div>
-                  <div style={{ position:'absolute', top:7, left:7, background:'rgba(0,0,0,0.65)', borderRadius:5, padding:'2px 7px', fontSize:10, color:'#fff' }}>
-                    👁 {formatCount(v.playCount)}
-                  </div>
-                </div>
-                <div style={{ padding:'11px 11px 13px' }}>
-                  <p style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.8)', lineHeight:1.4, marginBottom:7, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{v.text}</p>
-                  <p style={{ fontSize:11, color:'rgba(255,255,255,0.3)', marginBottom:7 }}>@{v.authorMeta.name}</p>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'rgba(255,255,255,0.35)' }}>
-                    <span>❤️ {formatCount(v.diggCount)}</span>
-                    {v.commentCount && <span>💬 {formatCount(v.commentCount)}</span>}
-                    <span style={{ color:'#FF8E53', fontWeight:700 }}>{er(v)}</span>
-                  </div>
-                </div>
-              </div>
+              <VideoCard key={v.id} v={v} onClick={() => setSelected(v)} />
             ))}
           </div>
         )}
       </div>
 
-      {selected && (
-        <VideoModal video={selected} onClose={() => setSelected(null)} />
-      )}
+      {selected && <VideoModal video={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }
