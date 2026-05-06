@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
-import { HashRouter, Routes, Route, Link, useNavigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { searchTikTok } from './api/tiktok'
+import VideoModal from './components/VideoModal'
+
+const API_BASE = 'https://glowstudio-api.up.railway.app/api'
 
 function formatCount(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -138,7 +141,6 @@ function Discover() {
   const [apiConnected, setApiConnected] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Video | null>(null)
-  const navigate = useNavigate()
 
   useEffect(() => {
     search()
@@ -230,26 +232,7 @@ function Discover() {
       </div>
 
       {selected && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }} onClick={() => setSelected(null)}>
-          <div style={{ background:'#111116', border:'1px solid rgba(255,255,255,0.1)', borderRadius:20, padding:28, maxWidth:440, width:'100%' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:18 }}>
-              <h3 style={{ fontWeight:700, fontSize:15 }}>영상 상세</h3>
-              <button onClick={() => setSelected(null)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:18 }}>✕</button>
-            </div>
-            <p style={{ fontSize:13, lineHeight:1.7, color:'rgba(255,255,255,0.75)', marginBottom:20 }}>{selected.text}</p>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:20 }}>
-              {[['조회수', formatCount(selected.playCount)], ['좋아요', formatCount(selected.diggCount)], ['댓글', formatCount(selected.commentCount||0)], ['참여율', er(selected)]].map(([l,v]) => (
-                <div key={l} style={{ background:'rgba(255,255,255,0.04)', borderRadius:10, padding:'12px 14px' }}>
-                  <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)', marginBottom:4 }}>{l}</div>
-                  <div style={{ fontSize:18, fontWeight:700, color:'#FF8E53' }}>{v}</div>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => { navigate('/generate'); setSelected(null) }} style={{ width:'100%', padding:'13px', borderRadius:10, fontWeight:700, fontSize:14, background:'linear-gradient(135deg,#FF6B6B,#FF8E53)', color:'#fff', border:'none', cursor:'pointer' }}>
-              ✍️ 이 스타일로 스크립트 생성 →
-            </button>
-          </div>
-        </div>
+        <VideoModal video={selected} onClose={() => setSelected(null)} />
       )}
     </div>
   )
@@ -257,11 +240,16 @@ function Discover() {
 
 /* ── Generate ── */
 function Generate() {
-  const [topic, setTopic] = useState('')
+  const [searchParams] = useSearchParams()
+  const [topic, setTopic] = useState(() => searchParams.get('topic') || '')
   const [tone, setTone] = useState('gen-z')
   const [product, setProduct] = useState('')
   const [script, setScript] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const fromAnalysis = searchParams.get('ref') === 'analysis'
+  const hookType = searchParams.get('hookType')
+  const duration = searchParams.get('duration')
 
   async function generateScript() {
     if (!topic.trim()) return
@@ -289,6 +277,11 @@ function Generate() {
           <h1 style={{ fontSize:30, fontWeight:800, letterSpacing:-1, marginBottom:6 }}>AI 스크립트 생성</h1>
           <p style={{ color:'rgba(255,255,255,0.4)', fontSize:13 }}>북미 Gen Z 트렌드에 맞는 TikTok 스크립트를 3분 안에 완성하세요</p>
         </div>
+        {fromAnalysis && hookType && (
+          <div style={{ padding:'12px 16px', borderRadius:12, marginBottom:18, background:'rgba(255,107,107,0.07)', border:'1px solid rgba(255,107,107,0.2)', fontSize:13, color:'rgba(255,255,255,0.65)' }}>
+            📊 AI 분석 결과 적용 중 &nbsp;•&nbsp; 후킹 유형: <strong style={{ color:'#FF8E53' }}>{hookType}</strong>{duration && <> &nbsp;•&nbsp; 참고 길이: <strong style={{ color:'#FF8E53' }}>{duration}초</strong></>}
+          </div>
+        )}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <div>
             <label style={{ display:'block', fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.4)', marginBottom:7, letterSpacing:1 }}>주제 *</label>
@@ -371,10 +364,10 @@ function Analyze() {
                 </div>
               ))}
             </div>
-            {result.recommendation && (
+            {result.recommendation != null && (
               <div style={{ padding:18, borderRadius:13, background:'rgba(255,107,107,0.07)', border:'1px solid rgba(255,107,107,0.18)' }}>
                 <p style={{ fontSize:11, fontWeight:700, color:'#FF6B6B', marginBottom:7 }}>💡 AI 개선 추천</p>
-                <p style={{ fontSize:13, color:'rgba(255,255,255,0.65)', lineHeight:1.65 }}>{result.recommendation as string}</p>
+                <p style={{ fontSize:13, color:'rgba(255,255,255,0.65)', lineHeight:1.65 }}>{String(result.recommendation)}</p>
               </div>
             )}
           </div>
