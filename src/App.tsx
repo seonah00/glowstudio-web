@@ -23,7 +23,68 @@ interface Video {
   commentCount?: number
   shareCount?: number
   webVideoUrl?: string
+  createTime?: number
 }
+
+type PeriodFilter = 'all' | '1d' | '7d' | '30d' | '90d'
+type SortFilter = 'views' | 'latest' | 'engagement'
+
+function filterAndSort(videos: Video[], period: PeriodFilter, sortBy: SortFilter): Video[] {
+  let filtered = [...videos]
+  if (period !== 'all') {
+    const now = Date.now()
+    const ms: Record<string, number> = {
+      '1d': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+      '90d': 90 * 24 * 60 * 60 * 1000,
+    }
+    const cutoff = now - ms[period]
+    filtered = filtered.filter(v => {
+      const ts = (v.createTime || 0) * 1000
+      return ts === 0 || ts >= cutoff
+    })
+  }
+  if (sortBy === 'views') {
+    filtered.sort((a, b) => b.playCount - a.playCount)
+  } else if (sortBy === 'latest') {
+    filtered.sort((a, b) => (b.createTime || 0) - (a.createTime || 0))
+  } else {
+    filtered.sort((a, b) => {
+      const erA = a.playCount > 0 ? (a.diggCount + (a.commentCount || 0)) / a.playCount : 0
+      const erB = b.playCount > 0 ? (b.diggCount + (b.commentCount || 0)) / b.playCount : 0
+      return erB - erA
+    })
+  }
+  return filtered
+}
+
+function formatDate(ts?: number): string {
+  if (!ts) return ''
+  const date = new Date(ts * 1000)
+  const diff = Date.now() - date.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  if (days === 0) return '오늘'
+  if (days === 1) return '어제'
+  if (days < 7) return `${days}일 전`
+  if (days < 30) return `${Math.floor(days / 7)}주 전`
+  if (days < 365) return `${Math.floor(days / 30)}개월 전`
+  return `${Math.floor(days / 365)}년 전`
+}
+
+const PERIOD_OPTIONS: { value: PeriodFilter; label: string }[] = [
+  { value: 'all', label: '전체' },
+  { value: '1d', label: '오늘' },
+  { value: '7d', label: '7일' },
+  { value: '30d', label: '30일' },
+  { value: '90d', label: '90일' },
+]
+
+const SORT_OPTIONS: { value: SortFilter; label: string }[] = [
+  { value: 'views', label: '🔥 조회수순' },
+  { value: 'latest', label: '🕐 최신순' },
+  { value: 'engagement', label: '💬 참여율순' },
+]
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');`
 
@@ -193,7 +254,9 @@ function VideoCard({ v, onClick }: { v: Video; onClick: () => void }) {
       </div>
       <div style={{ padding: '11px 11px 13px' }}>
         <p style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.8)', lineHeight: 1.4, marginBottom: 7, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{v.text}</p>
-        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 7 }}>@{v.authorMeta.name}</p>
+        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 7 }}>
+          @{v.authorMeta.name}{v.createTime ? <span style={{ marginLeft: 6, color: 'rgba(255,255,255,0.2)' }}>• {formatDate(v.createTime)}</span> : null}
+        </p>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
           <span>❤️ {formatCount(v.diggCount)}</span>
           {v.commentCount != null && <span>💬 {formatCount(v.commentCount)}</span>}
@@ -490,6 +553,38 @@ function CreatorTab({
   )
 }
 
+function FilterBar({
+  period, sortBy, onPeriod, onSort,
+}: {
+  period: PeriodFilter
+  sortBy: SortFilter
+  onPeriod: (v: PeriodFilter) => void
+  onSort: (v: SortFilter) => void
+}) {
+  const btnStyle = (active: boolean): React.CSSProperties => ({
+    padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    background: active ? 'rgba(255,107,107,0.15)' : 'rgba(255,255,255,0.05)',
+    border: `1px solid ${active ? 'rgba(255,107,107,0.4)' : 'rgba(255,255,255,0.1)'}`,
+    color: active ? '#FF8E53' : 'rgba(255,255,255,0.45)',
+  })
+  return (
+    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontWeight: 600, marginRight: 2 }}>기간</span>
+        {PERIOD_OPTIONS.map(o => (
+          <button key={o.value} onClick={() => onPeriod(o.value)} style={btnStyle(period === o.value)}>{o.label}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontWeight: 600, marginRight: 2 }}>정렬</span>
+        {SORT_OPTIONS.map(o => (
+          <button key={o.value} onClick={() => onSort(o.value)} style={btnStyle(sortBy === o.value)}>{o.label}</button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const DISCOVER_LOADING_MSGS = [
   '🔍 TikTok에서 트렌드 영상 수집 중...',
   '📊 조회수 데이터 분석 중...',
@@ -500,7 +595,10 @@ const DISCOVER_LOADING_MSGS = [
 function Discover() {
   const [activeTab, setActiveTab] = useState<TabType>('beauty')
   const [query, setQuery] = useState('kbeauty')
+  const [rawVideos, setRawVideos] = useState<Video[]>([])
   const [videos, setVideos] = useState<Video[]>([])
+  const [period, setPeriod] = useState<PeriodFilter>('7d')
+  const [sortBy, setSortBy] = useState<SortFilter>('views')
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState(DISCOVER_LOADING_MSGS[0])
   const [loadingPct, setLoadingPct] = useState(0)
@@ -508,6 +606,10 @@ function Discover() {
   const [apiError, setApiError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Video | null>(null)
   const [creatorCategory, setCreatorCategory] = useState<Category>('beauty')
+
+  useEffect(() => {
+    setVideos(filterAndSort(rawVideos, period, sortBy))
+  }, [rawVideos, period, sortBy])
 
   useEffect(() => {
     loadCategory('beauty')
@@ -536,15 +638,15 @@ function Discover() {
   }
 
   async function loadCategory(cat: Category) {
-    setLoading(true); setApiError(null); setVideos([])
+    setLoading(true); setApiError(null); setRawVideos([])
     const stop = startLoadingAnim()
     try {
       const data = await getTrends(cat)
       if (!data.length) throw new Error('결과 없음')
-      setVideos(data); setApiConnected(true)
+      setRawVideos(data); setApiConnected(true)
     } catch (err: unknown) {
       setApiError(err instanceof Error ? err.message : String(err))
-      setApiConnected(false); setVideos(SAMPLE_VIDEOS)
+      setApiConnected(false); setRawVideos(SAMPLE_VIDEOS)
     }
     stop()
     setLoadingPct(100)
@@ -553,15 +655,15 @@ function Discover() {
 
   async function search(keyword?: string) {
     const q = keyword ?? query
-    setLoading(true); setApiError(null); setVideos([])
+    setLoading(true); setApiError(null); setRawVideos([])
     const stop = startLoadingAnim()
     try {
       const data = await searchTikTok(q, 30)
       if (!data.length) throw new Error('결과 없음')
-      setVideos(data); setApiConnected(true)
+      setRawVideos(data); setApiConnected(true)
     } catch (err: unknown) {
       setApiError(err instanceof Error ? err.message : String(err))
-      setApiConnected(false); setVideos(SAMPLE_VIDEOS)
+      setApiConnected(false); setRawVideos(SAMPLE_VIDEOS)
     }
     stop()
     setLoadingPct(100)
@@ -623,12 +725,22 @@ function Discover() {
 
         {/* 키워드 검색 탭 입력창 */}
         {activeTab === 'search' && (
-          <div style={{ display: 'flex', gap: 10, marginBottom: 20, maxWidth: 520 }}>
-            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="#kbeauty, #grwm, #skincare ..."
-              style={{ flex: 1, padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, color: '#fff', outline: 'none' }} />
-            <button onClick={() => search()} disabled={loading} style={{ padding: '10px 22px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: loading ? 'rgba(255,107,107,0.3)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
-              {loading ? '검색 중...' : '검색'}
-            </button>
+          <div style={{ marginBottom: 20, maxWidth: 520 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="#kbeauty, #grwm, #skincare ..."
+                style={{ flex: 1, padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, color: '#fff', outline: 'none' }} />
+              <button onClick={() => search()} disabled={loading} style={{ padding: '10px 22px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: loading ? 'rgba(255,107,107,0.3)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
+                {loading ? '검색 중...' : '검색'}
+              </button>
+            </div>
+            <FilterBar period={period} sortBy={sortBy} onPeriod={setPeriod} onSort={setSortBy} />
+          </div>
+        )}
+
+        {/* 카테고리 탭 필터바 */}
+        {(activeTab === 'beauty' || activeTab === 'lifestyle' || activeTab === 'vlog') && !loading && rawVideos.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <FilterBar period={period} sortBy={sortBy} onPeriod={setPeriod} onSort={setSortBy} />
           </div>
         )}
 
@@ -675,6 +787,26 @@ function Discover() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            ) : videos.length === 0 && rawVideos.length > 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16 }}>
+                <p style={{ fontSize: 20, marginBottom: 10 }}>📭</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>해당 기간에 영상이 없어요</p>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 20 }}>
+                  {period === '1d' ? '오늘 → 7일' : period === '7d' ? '7일 → 30일' : '전체 보기'}로 넓혀볼까요?
+                </p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                  {period !== 'all' && period !== '30d' && period !== '90d' && (
+                    <button
+                      onClick={() => setPeriod(period === '1d' ? '7d' : '30d')}
+                      style={{ padding: '8px 18px', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,107,107,0.12)', border: '1px solid rgba(255,107,107,0.3)', color: '#FF8E53' }}
+                    >{period === '1d' ? '7일로 변경' : '30일로 변경'}</button>
+                  )}
+                  <button
+                    onClick={() => setPeriod('all')}
+                    style={{ padding: '8px 18px', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}
+                  >전체 보기</button>
                 </div>
               </div>
             ) : (

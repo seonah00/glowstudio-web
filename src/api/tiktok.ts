@@ -4,6 +4,7 @@ const BASE_URL = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset
 
 interface ApifyItem {
   id: string
+  videoId?: string
   text?: string
   desc?: string
   authorMeta?: { name?: string; avatar?: string }
@@ -16,6 +17,8 @@ interface ApifyItem {
   commentCount?: number
   shareCount?: number
   webVideoUrl?: string
+  createTime?: number
+  createTimeISO?: string
   stats?: {
     playCount?: number
     diggCount?: number
@@ -33,12 +36,20 @@ export interface Video {
   commentCount?: number
   shareCount?: number
   webVideoUrl?: string
+  createTime?: number
 }
 
 function mapItem(item: ApifyItem): Video {
   const authorName = item.authorMeta?.name || item.author?.uniqueId || 'unknown'
+  let createTime: number | undefined
+  if (item.createTime) {
+    createTime = item.createTime
+  } else if (item.createTimeISO) {
+    const ms = new Date(item.createTimeISO).getTime()
+    if (!isNaN(ms)) createTime = Math.floor(ms / 1000)
+  }
   return {
-    id: item.id,
+    id: item.id || item.videoId || '',
     text: item.text || item.desc || '',
     authorMeta: { name: authorName, avatar: item.authorMeta?.avatar },
     videoMeta: {
@@ -50,7 +61,18 @@ function mapItem(item: ApifyItem): Video {
     commentCount: item.commentCount || item.stats?.commentCount || 0,
     shareCount: item.shareCount || 0,
     webVideoUrl: item.webVideoUrl || `https://www.tiktok.com/@${authorName}/video/${item.id}`,
+    createTime,
   }
+}
+
+function dedup(items: ApifyItem[]): ApifyItem[] {
+  const seen = new Set<string>()
+  return items.filter(item => {
+    const id = item.id || item.videoId || ''
+    if (!id || seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
 }
 
 export async function searchTikTok(hashtag: string, limit = 12): Promise<Video[]> {
@@ -70,7 +92,7 @@ export async function searchTikTok(hashtag: string, limit = 12): Promise<Video[]
   })
   if (!res.ok) throw new Error(`Apify error ${res.status}`)
   const items: ApifyItem[] = await res.json()
-  return items.map(mapItem)
+  return dedup(items).slice(0, limit).map(mapItem)
 }
 
 export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit = 30): Promise<Video[]> {
@@ -83,7 +105,7 @@ export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit
   const url = `${BASE_URL}?token=${APIFY_TOKEN}&timeout=60`
   const body = {
     hashtags,
-    resultsPerPage: Math.ceil(limit / hashtags.length),
+    resultsPerPage: Math.ceil((limit * 1.5) / hashtags.length),
     shouldDownloadCovers: true,
     shouldDownloadVideos: false,
   }
@@ -95,5 +117,7 @@ export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit
   })
   if (!res.ok) throw new Error(`Apify error ${res.status}`)
   const items: ApifyItem[] = await res.json()
-  return items.map(mapItem)
+  const unique = dedup(items)
+  unique.sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
+  return unique.slice(0, limit).map(mapItem)
 }
