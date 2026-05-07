@@ -1,5 +1,73 @@
 import { Video } from './tiktok'
 
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
+
+// ── 백엔드(Vision 기반) 분석 결과 타입 ──
+
+export interface SceneDescription {
+  timeRange: string
+  visual: string
+  purpose: string
+}
+
+export interface FrameAnalysisResult {
+  viral_score: number
+  hook_analysis: {
+    type: string
+    description: string
+    visual_hook: string
+    text_overlay: string
+    script_example: string
+  }
+  visual_analysis: {
+    camera_angle: string
+    distance: string
+    lighting: string
+    background: string
+    product_appearance: string
+    editing_pace: string
+  }
+  content_structure: {
+    scene_breakdown: SceneDescription[]
+    key_moments: string[]
+  }
+  viral_factors: string[]
+  copyable_elements: string[]
+  shooting_tips: string[]
+  weak_points: string[]
+  target_audience: string
+  recommended_improvements: string[]
+}
+
+export interface ServerAnalysisResponse {
+  success: boolean
+  videoInfo: {
+    coverUrl: string
+    text: string
+    playCount: number
+    diggCount: number
+    commentCount: number
+    duration: number
+    authorName: string
+  }
+  analysis: FrameAnalysisResult
+  framesAnalyzed: number
+}
+
+export async function analyzeVideoWithFrames(tiktokUrl: string): Promise<ServerAnalysisResponse> {
+  const res = await fetch(`${SERVER_URL}/analyze/video`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tiktokUrl }),
+    signal: AbortSignal.timeout(120000),
+  })
+  if (!res.ok) {
+    const err = await res.json() as { error?: string }
+    throw new Error(err.error || '분석 실패')
+  }
+  return res.json() as Promise<ServerAnalysisResponse>
+}
+
 export interface AnalysisResult {
   viral_score: number
   viral_reason: string
