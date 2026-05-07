@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { searchTikTok, getTrends } from './api/tiktok'
 import VideoModal from './components/VideoModal'
-import { getDailyTrends, DailyTrendData, getCreators, Creator, CreatorSort } from './api/trends'
+import { getDailyTrends, DailyTrendData } from './api/trends'
+import { getCreatorsByCategory, ApiCreator } from './api/creators'
 import { generateScript, ScriptOutput, GenerateInput, ProductItem } from './api/generate'
 
 const API_BASE = 'https://glowstudio-api.up.railway.app/api'
@@ -357,6 +358,8 @@ function TrendSidebar({ category, onClickTag }: { category: Category; onClickTag
 }
 
 /* ── CreatorTab ── */
+type CreatorSortKey = 'growth' | 'avgViews' | 'followers'
+
 function CreatorTab({
   category,
   onCategoryChange,
@@ -366,32 +369,29 @@ function CreatorTab({
   onCategoryChange: (cat: Category) => void
   onSearchCreator: (username: string, cat: Category) => void
 }) {
-  const [sortBy, setSortBy] = useState<CreatorSort>('growth_pct')
-  const [filterKeywords, setFilterKeywords] = useState<string[]>([])
+  const [creators, setCreators] = useState<ApiCreator[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [sortBy, setSortBy] = useState<CreatorSortKey>('growth')
 
   useEffect(() => {
-    setFilterKeywords([])
+    setCreators([])
+    setLoaded(false)
+    setError(null)
   }, [category])
 
-  const allInCategory = getCreators(category, 'followers', [])
-  const maxFollowers = allInCategory.length > 0 ? allInCategory[0].followersNum : 1
-  const allKeywords = [...new Set(allInCategory.flatMap((c: Creator) => c.keywords))]
-  const creators = getCreators(category, sortBy, filterKeywords)
-
-  function toggleKeyword(kw: string) {
-    setFilterKeywords(prev => prev.includes(kw) ? prev.filter(k => k !== kw) : [...prev, kw])
-  }
-
-  function getBadge(g: number) {
-    if (g > 5) return '🔥'
-    if (g >= 2) return '📈'
-    return null
-  }
-
-  function getBorderColor(g: number) {
-    if (g > 5) return 'rgba(255,107,107,0.45)'
-    if (g >= 2) return 'rgba(255,165,0,0.35)'
-    return 'rgba(255,255,255,0.07)'
+  async function loadCreators() {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await getCreatorsByCategory(category, 20)
+      setCreators(data)
+      setLoaded(true)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '수집 실패')
+    }
+    setLoading(false)
   }
 
   const categoryLabels: Record<Category, string> = {
@@ -400,12 +400,24 @@ function CreatorTab({
     vlog: '🎬 Vlog',
   }
 
-  const sortOptions: { value: CreatorSort; label: string }[] = [
-    { value: 'growth_pct', label: '팔로워 급상승순' },
-    { value: 'growth_num', label: '팔로워 증가수' },
-    { value: 'avg_views', label: '평균 조회수' },
-    { value: 'followers', label: '팔로워 수' },
-  ]
+  const badgeMap = {
+    hot: { icon: '🔥', label: '급상승', border: 'rgba(255,107,107,0.45)' },
+    rising: { icon: '📈', label: '상승중', border: 'rgba(255,165,0,0.35)' },
+    stable: { icon: null, label: null, border: 'rgba(255,255,255,0.07)' },
+  }
+
+  const sorted = [...creators].sort((a, b) => {
+    if (sortBy === 'growth') {
+      const order = { hot: 0, rising: 1, stable: 2 }
+      if (order[a.growthIndicator] !== order[b.growthIndicator])
+        return order[a.growthIndicator] - order[b.growthIndicator]
+      return b.avgViews - a.avgViews
+    }
+    if (sortBy === 'avgViews') return b.avgViews - a.avgViews
+    return b.followers - a.followers
+  })
+
+  const maxFollowers = creators.length > 0 ? Math.max(...creators.map(c => c.followers)) : 1
 
   return (
     <div>
@@ -413,125 +425,137 @@ function CreatorTab({
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 6 }}>
           {(['beauty', 'lifestyle', 'vlog'] as Category[]).map(cat => (
-            <button
-              key={cat}
-              onClick={() => onCategoryChange(cat)}
-              style={{
-                padding: '7px 14px', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                background: category === cat ? 'rgba(255,107,107,0.13)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${category === cat ? 'rgba(255,107,107,0.35)' : 'rgba(255,255,255,0.08)'}`,
-                color: category === cat ? '#FF8E53' : 'rgba(255,255,255,0.5)',
-              }}
-            >{categoryLabels[cat]}</button>
+            <button key={cat} onClick={() => onCategoryChange(cat)} style={{
+              padding: '7px 14px', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              background: category === cat ? 'rgba(255,107,107,0.13)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${category === cat ? 'rgba(255,107,107,0.35)' : 'rgba(255,255,255,0.08)'}`,
+              color: category === cat ? '#FF8E53' : 'rgba(255,255,255,0.5)',
+            }}>{categoryLabels[cat]}</button>
           ))}
         </div>
-        <select
-          value={sortBy}
-          onChange={e => setSortBy(e.target.value as CreatorSort)}
-          style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 9, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: 12, cursor: 'pointer', outline: 'none' }}
-        >
-          {sortOptions.map(o => (
-            <option key={o.value} value={o.value} style={{ background: '#1a1a1f' }}>{o.label}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* 키워드 필터 */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
-        {allKeywords.map(kw => (
-          <button
-            key={kw}
-            onClick={() => toggleKeyword(kw)}
-            style={{
-              padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-              background: filterKeywords.includes(kw) ? 'rgba(255,107,107,0.15)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${filterKeywords.includes(kw) ? 'rgba(255,107,107,0.4)' : 'rgba(255,255,255,0.1)'}`,
-              color: filterKeywords.includes(kw) ? '#FF8E53' : 'rgba(255,255,255,0.45)',
-            }}
-          >#{kw}</button>
-        ))}
-        {filterKeywords.length > 0 && (
-          <button
-            onClick={() => setFilterKeywords([])}
-            style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}
-          >✕ 초기화</button>
+        {loaded && (
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as CreatorSortKey)}
+            style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 9, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
+            <option value="growth" style={{ background: '#1a1a1f' }}>🔥 성장 지표순</option>
+            <option value="avgViews" style={{ background: '#1a1a1f' }}>👁 평균 조회수순</option>
+            <option value="followers" style={{ background: '#1a1a1f' }}>👥 팔로워순</option>
+          </select>
         )}
       </div>
 
-      {creators.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>
-          선택한 키워드 조합에 해당하는 크리에이터가 없어요
+      {/* 초기 상태 — 로드 버튼 */}
+      {!loaded && !loading && !error && (
+        <div style={{ textAlign: 'center', padding: '56px 20px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16 }}>
+          <p style={{ fontSize: 28, marginBottom: 12 }}>👤</p>
+          <p style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: 6 }}>실제 TikTok 크리에이터 데이터를 수집합니다</p>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 24 }}>카테고리별 해시태그를 분석해 실제 활동 중인 크리에이터를 찾아드려요 • 약 30~60초 소요</p>
+          <button onClick={loadCreators} style={{ padding: '12px 28px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'linear-gradient(135deg,#FF6B6B,#FF8E53)', border: 'none', color: '#fff' }}>
+            🔄 데이터 불러오기
+          </button>
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {creators.map((c: Creator) => {
-          const badge = getBadge(c.growthPctNum)
-          const borderColor = getBorderColor(c.growthPctNum)
-          const barPct = Math.round((c.followersNum / maxFollowers) * 100)
-          return (
-            <div key={c.username} style={{ padding: '18px 20px', borderRadius: 16, background: 'rgba(255,255,255,0.02)', border: `1px solid ${borderColor}` }}>
-              {/* 상단: 배지 + 이름 + 버튼 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {badge && <span style={{ fontSize: 18 }}>{badge}</span>}
-                  <div>
-                    <p style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>@{c.username}</p>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{c.displayName}</p>
+      {/* 로딩 */}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '56px 20px' }}>
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 16 }}>🔍 TikTok에서 실제 크리에이터 수집 중...</p>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 24 }}>카테고리별 해시태그 분석 + 크리에이터 집계 • 약 30~60초 소요</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} style={{ height: 100, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 에러 */}
+      {error && !loading && (
+        <div style={{ textAlign: 'center', padding: '48px 20px', background: 'rgba(255,107,107,0.05)', border: '1px solid rgba(255,107,107,0.15)', borderRadius: 16 }}>
+          <p style={{ fontSize: 13, color: '#FF6B6B', marginBottom: 16 }}>⚠️ 크리에이터 수집 실패: {error}</p>
+          <button onClick={loadCreators} style={{ padding: '9px 22px', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,107,107,0.12)', border: '1px solid rgba(255,107,107,0.3)', color: '#FF8E53' }}>
+            다시 시도
+          </button>
+        </div>
+      )}
+
+      {/* 결과 */}
+      {loaded && !loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {sorted.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>
+              수집된 크리에이터가 없어요. 다시 시도해주세요.
+            </div>
+          )}
+          {sorted.map(c => {
+            const badge = badgeMap[c.growthIndicator]
+            const barPct = Math.round((c.followers / maxFollowers) * 100)
+            return (
+              <div key={c.username} style={{ padding: '18px 20px', borderRadius: 16, background: 'rgba(255,255,255,0.02)', border: `1px solid ${badge.border}` }}>
+                {/* 상단: 배지 + 이름 + 버튼 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {badge.icon && <span style={{ fontSize: 18 }}>{badge.icon}</span>}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <p style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>@{c.username}</p>
+                        {c.isVerified && <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 700 }}>✓</span>}
+                      </div>
+                      <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{c.displayName}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      onClick={() => onSearchCreator('@' + c.username, c.category as Category)}
+                      style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,107,107,0.1)', border: '1px solid rgba(255,107,107,0.25)', color: '#FF8E53' }}
+                    >📊 이 계정 영상 보기</button>
+                    <a href={c.tiktokUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                    >↗ TikTok</a>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                  <button
-                    onClick={() => onSearchCreator(c.username, c.category)}
-                    style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,107,107,0.1)', border: '1px solid rgba(255,107,107,0.25)', color: '#FF8E53' }}
-                  >📊 이 계정 영상 보기</button>
-                  <a
-                    href={c.tiktokUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-                  >↗ TikTok</a>
-                </div>
-              </div>
 
-              {/* 팔로워 바 */}
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>팔로워</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{c.followers}</span>
+                {/* 팔로워 바 */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>팔로워</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{c.followersDisplay}</span>
+                  </div>
+                  <div style={{ height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${barPct}%`, background: 'linear-gradient(90deg,#FF6B6B,#FF8E53)', borderRadius: 3 }} />
+                  </div>
                 </div>
-                <div style={{ height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${barPct}%`, background: 'linear-gradient(90deg,#FF6B6B,#FF8E53)', borderRadius: 3 }} />
-                </div>
-              </div>
 
-              {/* 성장 지표 */}
-              <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
-                <div>
-                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 3 }}>이번 주 증가</p>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: '#4ade80' }}>
-                    {c.followerGrowthNum} <span style={{ fontSize: 12 }}>{c.followerGrowthPct}</span>
-                  </p>
+                {/* 지표 */}
+                <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
+                  <div>
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 3 }}>평균 조회수</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>{c.avgViewsDisplay}</p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 3 }}>참여율</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#4ade80' }}>{c.engagementRate}</p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 3 }}>영상 수</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>{c.videoCount}</p>
+                  </div>
                 </div>
-                <div>
-                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 3 }}>평균 조회수</p>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>{c.avgViews}</p>
-                </div>
-              </div>
 
-              {/* 키워드 태그 */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {c.keywords.map(kw => (
-                  <span
-                    key={kw}
-                    style={{ padding: '3px 9px', borderRadius: 5, fontSize: 11, fontWeight: 600, background: 'rgba(255,142,83,0.08)', border: '1px solid rgba(255,142,83,0.18)', color: 'rgba(255,200,150,0.8)' }}
-                  >#{kw}</span>
-                ))}
+                {/* 키워드 태그 */}
+                {c.keywords.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {c.keywords.map(kw => (
+                      <span key={kw} style={{ padding: '3px 9px', borderRadius: 5, fontSize: 11, fontWeight: 600, background: 'rgba(255,142,83,0.08)', border: '1px solid rgba(255,142,83,0.18)', color: 'rgba(255,200,150,0.8)' }}>
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
