@@ -220,9 +220,26 @@ function SkeletonGrid() {
   )
 }
 
+const SIDEBAR_SPIN_CSS = `@keyframes spin { to { transform: rotate(360deg) } }`
+
 function TrendSidebar({ category, onClickTag }: { category: Category; onClickTag: (tag: string) => void }) {
-  const trends: DailyTrendData = getDailyTrends(category)
+  const [trendData, setTrendData] = useState<DailyTrendData>(() => getDailyTrends(category))
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshDone, setRefreshDone] = useState(false)
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  useEffect(() => {
+    setTrendData(getDailyTrends(category))
+  }, [category])
+
+  async function refreshTrends() {
+    setRefreshing(true)
+    await new Promise(r => setTimeout(r, 900))
+    setTrendData(getDailyTrends(category))
+    setRefreshing(false)
+    setRefreshDone(true)
+    setTimeout(() => setRefreshDone(false), 1500)
+  }
 
   const changeIcon = (change: string) => {
     if (change === 'up') return <span style={{ color: '#4ade80', fontWeight: 700 }}>↑</span>
@@ -233,33 +250,48 @@ function TrendSidebar({ category, onClickTag }: { category: Category; onClickTag
 
   return (
     <div style={{ position: 'sticky', top: 80, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
-      <div style={{ marginBottom: 16 }}>
-        <p style={{ fontSize: 14, fontWeight: 800, marginBottom: 3 }}>📈 실시간 트렌드</p>
-        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{today} 기준</p>
+      <style>{SIDEBAR_SPIN_CSS}</style>
+
+      {/* 헤더 + 새로고침 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 800, marginBottom: 3 }}>📈 실시간 트렌드</p>
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{today} 기준</p>
+        </div>
+        <button
+          onClick={refreshTrends}
+          disabled={refreshing}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: refreshing ? 'not-allowed' : 'pointer', background: refreshDone ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.05)', border: `1px solid ${refreshDone ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.1)'}`, color: refreshDone ? '#4ade80' : 'rgba(255,255,255,0.45)' }}
+        >
+          <span style={{ display: 'inline-block', animation: refreshing ? 'spin 0.7s linear infinite' : 'none' }}>🔄</span>
+          {refreshDone ? '✓ 업데이트됨' : refreshing ? '' : '새로고침'}
+        </button>
       </div>
 
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#FF8E53', letterSpacing: 0.5, marginBottom: 10 }}>🔥 인기 해시태그</p>
-      <div style={{ marginBottom: 20 }}>
-        {trends.topHashtags.map((item, i) => (
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#FF8E53', letterSpacing: 0.5, marginBottom: 8 }}>🔥 인기 해시태그</p>
+
+      {/* 스크롤 가능한 해시태그 리스트 */}
+      <div style={{ maxHeight: 420, overflowY: 'auto', marginBottom: 16, scrollbarWidth: 'thin' }}>
+        {trendData.topHashtags.map((item, i) => (
           <button
             key={item.tag}
             onClick={() => onClickTag(item.tag)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px', borderRadius: 8, marginBottom: 4, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px', borderRadius: 8, marginBottom: 2, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', width: 14, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: 600, flex: 1 }}>{item.tag}</span>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{item.count}</span>
-            <span style={{ fontSize: 12, width: 20, textAlign: 'center', flexShrink: 0 }}>{changeIcon(item.change)}</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', width: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.tag}</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>{item.count}</span>
+            <span style={{ fontSize: 12, width: 22, textAlign: 'center', flexShrink: 0 }}>{changeIcon(item.change)}</span>
           </button>
         ))}
       </div>
 
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16, marginBottom: 16 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, marginBottom: 10 }}>🌡 떠오르는 키워드</p>
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14, marginBottom: 14 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, marginBottom: 8 }}>🌡 떠오르는 키워드</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {trends.risingKeywords.map(kw => (
+          {trendData.risingKeywords.map(kw => (
             <button
               key={kw}
               onClick={() => onClickTag('#' + kw)}
@@ -271,18 +303,27 @@ function TrendSidebar({ category, onClickTag }: { category: Category; onClickTag
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
-        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>⏱ 마지막 업데이트: {trends.updatedAt}</p>
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
+        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>⏱ 마지막 업데이트: {trendData.updatedAt}</p>
       </div>
     </div>
   )
 }
+
+const DISCOVER_LOADING_MSGS = [
+  '🔍 TikTok에서 트렌드 영상 수집 중...',
+  '📊 조회수 데이터 분석 중...',
+  '🏷 해시태그 순위 계산 중...',
+  '✨ 인기 영상 정렬 중...',
+]
 
 function Discover() {
   const [activeTab, setActiveTab] = useState<TabType>('beauty')
   const [query, setQuery] = useState('kbeauty')
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState(DISCOVER_LOADING_MSGS[0])
+  const [loadingPct, setLoadingPct] = useState(0)
   const [apiConnected, setApiConnected] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Video | null>(null)
@@ -291,8 +332,31 @@ function Discover() {
     loadCategory('beauty')
   }, [])
 
+  function startLoadingAnim() {
+    let msgIdx = 0
+    let pct = 0
+    setLoadingMsg(DISCOVER_LOADING_MSGS[0])
+    setLoadingPct(0)
+
+    const msgInterval = setInterval(() => {
+      msgIdx = (msgIdx + 1) % DISCOVER_LOADING_MSGS.length
+      setLoadingMsg(DISCOVER_LOADING_MSGS[msgIdx])
+    }, 1500)
+
+    const pctInterval = setInterval(() => {
+      pct = Math.min(pct + 3.375, 90)
+      setLoadingPct(pct)
+    }, 1500)
+
+    return () => {
+      clearInterval(msgInterval)
+      clearInterval(pctInterval)
+    }
+  }
+
   async function loadCategory(cat: Category) {
     setLoading(true); setApiError(null); setVideos([])
+    const stop = startLoadingAnim()
     try {
       const data = await getTrends(cat)
       if (!data.length) throw new Error('결과 없음')
@@ -301,12 +365,15 @@ function Discover() {
       setApiError(err instanceof Error ? err.message : String(err))
       setApiConnected(false); setVideos(SAMPLE_VIDEOS)
     }
-    setLoading(false)
+    stop()
+    setLoadingPct(100)
+    setTimeout(() => { setLoading(false); setLoadingPct(0) }, 300)
   }
 
   async function search(keyword?: string) {
     const q = keyword ?? query
     setLoading(true); setApiError(null); setVideos([])
+    const stop = startLoadingAnim()
     try {
       const data = await searchTikTok(q, 30)
       if (!data.length) throw new Error('결과 없음')
@@ -315,7 +382,9 @@ function Discover() {
       setApiError(err instanceof Error ? err.message : String(err))
       setApiConnected(false); setVideos(SAMPLE_VIDEOS)
     }
-    setLoading(false)
+    stop()
+    setLoadingPct(100)
+    setTimeout(() => { setLoading(false); setLoadingPct(0) }, 300)
   }
 
   function switchTab(tab: TabType) {
@@ -390,8 +459,20 @@ function Discover() {
         <div style={{ display: 'grid', gridTemplateColumns: showSidebar ? '1fr 260px' : '1fr', gap: 24, alignItems: 'start' }}>
           {/* 좌측: 영상 그리드 */}
           <div>
-            {loading
-              ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
+            {loading ? (
+              <div style={{ position: 'relative' }}>
+                {/* 진행바 */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', fontWeight: 500 }}>{loadingMsg}</p>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>약 30~60초 소요</p>
+                  </div>
+                  <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${loadingPct}%`, background: 'linear-gradient(90deg,#FF6B6B,#FF8E53)', borderRadius: 3, transition: 'width 0.4s ease' }} />
+                  </div>
+                </div>
+                {/* 스켈레톤 30개 */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12, opacity: 0.4 }}>
                   {Array.from({ length: 30 }).map((_, i) => (
                     <div key={i} style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
                       <div style={{ aspectRatio: '9/16', background: 'rgba(255,255,255,0.05)' }} />
@@ -402,12 +483,14 @@ function Discover() {
                     </div>
                   ))}
                 </div>
-              : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
-                  {videos.map(v => (
-                    <VideoCard key={v.id} v={v} onClick={() => setSelected(v)} />
-                  ))}
-                </div>
-            }
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
+                {videos.map(v => (
+                  <VideoCard key={v.id} v={v} onClick={() => setSelected(v)} />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 우측: 실시간 트렌드 사이드바 */}
