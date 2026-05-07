@@ -75,7 +75,7 @@ function dedup(items: ApifyItem[]): ApifyItem[] {
   })
 }
 
-export async function searchTikTok(hashtag: string, limit = 12): Promise<Video[]> {
+export async function searchTikTok(hashtag: string, limit = 30): Promise<Video[]> {
   const url = `${BASE_URL}?token=${APIFY_TOKEN}&timeout=60`
   const body = {
     hashtags: [hashtag.replace(/^#/, '')],
