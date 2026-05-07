@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { searchTikTok, getTrends } from './api/tiktok'
+import { searchTikTok, getTrends, searchTikTokByUser } from './api/tiktok'
 import VideoModal from './components/VideoModal'
 import { getDailyTrends, DailyTrendData } from './api/trends'
 import { getCreatorsByCategory, ApiCreator } from './api/creators'
@@ -600,8 +600,11 @@ const DISCOVER_LOADING_MSGS = [
 ]
 
 function Discover() {
+  type SearchMode = 'hashtag' | 'account'
   const [activeTab, setActiveTab] = useState<TabType>('beauty')
   const [query, setQuery] = useState('kbeauty')
+  const [searchMode, setSearchMode] = useState<SearchMode>('hashtag')
+  const [accountQuery, setAccountQuery] = useState('')
   const [rawVideos, setRawVideos] = useState<Video[]>([])
   const [videos, setVideos] = useState<Video[]>([])
   const [period, setPeriod] = useState<PeriodFilter>('7d')
@@ -677,6 +680,28 @@ function Discover() {
     setTimeout(() => { setLoading(false); setLoadingPct(0) }, 300)
   }
 
+  async function searchByAccount(handle: string) {
+    const username = handle
+      .replace(/^@/, '')
+      .replace(/.*tiktok\.com\/@?/, '')
+      .replace(/\/.*$/, '')
+      .trim()
+    if (!username) return
+    setLoading(true); setApiError(null); setRawVideos([])
+    const stop = startLoadingAnim()
+    try {
+      const data = await searchTikTokByUser(username)
+      if (!data.length) throw new Error(`@${username} 영상을 찾을 수 없어요`)
+      setRawVideos(data); setApiConnected(true)
+    } catch (err: unknown) {
+      setApiError(err instanceof Error ? err.message : '검색 실패')
+      setApiConnected(false); setRawVideos([])
+    }
+    stop()
+    setLoadingPct(100)
+    setTimeout(() => { setLoading(false); setLoadingPct(0) }, 300)
+  }
+
   function switchTab(tab: TabType) {
     setActiveTab(tab)
     setVideos([])
@@ -735,15 +760,54 @@ function Discover() {
 
         {/* 키워드 검색 탭 입력창 */}
         {activeTab === 'search' && (
-          <div style={{ marginBottom: 20, maxWidth: 520 }}>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-              <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="#kbeauty, #grwm, #skincare ..."
-                style={{ flex: 1, padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, color: '#fff', outline: 'none' }} />
-              <button onClick={() => search()} disabled={loading} style={{ padding: '10px 22px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: loading ? 'rgba(255,107,107,0.3)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
-                {loading ? '검색 중...' : '검색'}
-              </button>
+          <div style={{ marginBottom: 20, maxWidth: 560 }}>
+            {/* 모드 토글 */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              {([['hashtag', '🔍 해시태그 검색'], ['account', '👤 계정 검색']] as [SearchMode, string][]).map(([mode, label]) => (
+                <button key={mode} onClick={() => setSearchMode(mode)} style={{
+                  padding: '7px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  background: searchMode === mode ? 'rgba(255,107,107,0.13)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${searchMode === mode ? 'rgba(255,107,107,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                  color: searchMode === mode ? '#FF8E53' : 'rgba(255,255,255,0.5)',
+                }}>{label}</button>
+              ))}
             </div>
-            <FilterBar period={period} sortBy={sortBy} onPeriod={setPeriod} onSort={setSortBy} />
+
+            {/* 해시태그 검색 */}
+            {searchMode === 'hashtag' && (
+              <>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                  <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="#kbeauty, #grwm, #skincare ..."
+                    style={{ flex: 1, padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, color: '#fff', outline: 'none' }} />
+                  <button onClick={() => search()} disabled={loading} style={{ padding: '10px 22px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: loading ? 'rgba(255,107,107,0.3)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
+                    {loading ? '검색 중...' : '검색'}
+                  </button>
+                </div>
+                <FilterBar period={period} sortBy={sortBy} onPeriod={setPeriod} onSort={setSortBy} />
+              </>
+            )}
+
+            {/* 계정 검색 */}
+            {searchMode === 'account' && (
+              <div style={{ padding: '20px', borderRadius: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 12 }}>TikTok 계정 핸들을 입력하면 해당 계정의 최근 영상을 불러옵니다</p>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+                  <input
+                    value={accountQuery}
+                    onChange={e => setAccountQuery(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && searchByAccount(accountQuery)}
+                    placeholder="@username 또는 https://tiktok.com/@..."
+                    style={{ flex: 1, padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, color: '#fff', outline: 'none' }}
+                  />
+                  <button
+                    onClick={() => searchByAccount(accountQuery)}
+                    disabled={loading || !accountQuery.trim()}
+                    style={{ padding: '10px 22px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: loading || !accountQuery.trim() ? 'rgba(255,107,107,0.3)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading || !accountQuery.trim() ? 'not-allowed' : 'pointer' }}
+                  >{loading ? '검색 중...' : '검색'}</button>
+                </div>
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>예시: @saebyeol.wellness</p>
+              </div>
+            )}
           </div>
         )}
 

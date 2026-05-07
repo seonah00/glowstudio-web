@@ -98,6 +98,28 @@ export async function searchTikTok(hashtag: string, limit = 30): Promise<Video[]
   return unique.slice(0, limit).map(mapItem)
 }
 
+export async function searchTikTokByUser(username: string, limit = 20): Promise<Video[]> {
+  const url = `${BASE_URL}?token=${APIFY_TOKEN}&timeout=60`
+  const body = {
+    profiles: [username],
+    resultsPerPage: limit,
+    shouldDownloadCovers: true,
+    shouldDownloadVideos: false,
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(65000),
+  })
+  if (!res.ok) throw new Error(`Apify ${res.status}`)
+  const items: ApifyItem[] = await res.json()
+  if (!items?.length) throw new Error(`@${username} 계정을 찾을 수 없어요`)
+  const unique = dedup(items)
+  console.log(`[searchTikTokByUser] @${username}: ${items.length}개, 중복제거 후: ${unique.length}개`)
+  return unique.slice(0, limit).map(mapItem)
+}
+
 export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit = 30): Promise<Video[]> {
   const hashtagMap = {
     beauty: ['kbeauty', 'skincare', 'glassskin', 'grwm', 'makeuptutorial'],
