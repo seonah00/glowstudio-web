@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { searchTikTok, getTrends } from './api/tiktok'
 import VideoModal from './components/VideoModal'
-import { getDailyTrends, DailyTrendData } from './api/trends'
+import { getDailyTrends, DailyTrendData, getCreators, Creator, CreatorSort } from './api/trends'
 import { generateScript, ScriptOutput, GenerateInput } from './api/generate'
 
 const API_BASE = 'https://glowstudio-api.up.railway.app/api'
@@ -170,7 +170,7 @@ const CATEGORY_HASHTAGS = {
 } as const
 
 type Category = keyof typeof CATEGORY_HASHTAGS
-type TabType = Category | 'search'
+type TabType = Category | 'search' | 'creator'
 
 function VideoCard({ v, onClick }: { v: Video; onClick: () => void }) {
   function er() {
@@ -310,6 +310,186 @@ function TrendSidebar({ category, onClickTag }: { category: Category; onClickTag
   )
 }
 
+/* ── CreatorTab ── */
+function CreatorTab({
+  category,
+  onCategoryChange,
+  onSearchCreator,
+}: {
+  category: Category
+  onCategoryChange: (cat: Category) => void
+  onSearchCreator: (username: string, cat: Category) => void
+}) {
+  const [sortBy, setSortBy] = useState<CreatorSort>('growth_pct')
+  const [filterKeywords, setFilterKeywords] = useState<string[]>([])
+
+  useEffect(() => {
+    setFilterKeywords([])
+  }, [category])
+
+  const allInCategory = getCreators(category, 'followers', [])
+  const maxFollowers = allInCategory.length > 0 ? allInCategory[0].followersNum : 1
+  const allKeywords = [...new Set(allInCategory.flatMap((c: Creator) => c.keywords))]
+  const creators = getCreators(category, sortBy, filterKeywords)
+
+  function toggleKeyword(kw: string) {
+    setFilterKeywords(prev => prev.includes(kw) ? prev.filter(k => k !== kw) : [...prev, kw])
+  }
+
+  function getBadge(g: number) {
+    if (g > 5) return '🔥'
+    if (g >= 2) return '📈'
+    return null
+  }
+
+  function getBorderColor(g: number) {
+    if (g > 5) return 'rgba(255,107,107,0.45)'
+    if (g >= 2) return 'rgba(255,165,0,0.35)'
+    return 'rgba(255,255,255,0.07)'
+  }
+
+  const categoryLabels: Record<Category, string> = {
+    beauty: '💄 뷰티',
+    lifestyle: '🌿 라이프스타일',
+    vlog: '🎬 Vlog',
+  }
+
+  const sortOptions: { value: CreatorSort; label: string }[] = [
+    { value: 'growth_pct', label: '팔로워 급상승순' },
+    { value: 'growth_num', label: '팔로워 증가수' },
+    { value: 'avg_views', label: '평균 조회수' },
+    { value: 'followers', label: '팔로워 수' },
+  ]
+
+  return (
+    <div>
+      {/* 컨트롤 헤더 */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['beauty', 'lifestyle', 'vlog'] as Category[]).map(cat => (
+            <button
+              key={cat}
+              onClick={() => onCategoryChange(cat)}
+              style={{
+                padding: '7px 14px', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                background: category === cat ? 'rgba(255,107,107,0.13)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${category === cat ? 'rgba(255,107,107,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                color: category === cat ? '#FF8E53' : 'rgba(255,255,255,0.5)',
+              }}
+            >{categoryLabels[cat]}</button>
+          ))}
+        </div>
+        <select
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value as CreatorSort)}
+          style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 9, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: 12, cursor: 'pointer', outline: 'none' }}
+        >
+          {sortOptions.map(o => (
+            <option key={o.value} value={o.value} style={{ background: '#1a1a1f' }}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* 키워드 필터 */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+        {allKeywords.map(kw => (
+          <button
+            key={kw}
+            onClick={() => toggleKeyword(kw)}
+            style={{
+              padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              background: filterKeywords.includes(kw) ? 'rgba(255,107,107,0.15)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${filterKeywords.includes(kw) ? 'rgba(255,107,107,0.4)' : 'rgba(255,255,255,0.1)'}`,
+              color: filterKeywords.includes(kw) ? '#FF8E53' : 'rgba(255,255,255,0.45)',
+            }}
+          >#{kw}</button>
+        ))}
+        {filterKeywords.length > 0 && (
+          <button
+            onClick={() => setFilterKeywords([])}
+            style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}
+          >✕ 초기화</button>
+        )}
+      </div>
+
+      {creators.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>
+          선택한 키워드 조합에 해당하는 크리에이터가 없어요
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {creators.map((c: Creator) => {
+          const badge = getBadge(c.growthPctNum)
+          const borderColor = getBorderColor(c.growthPctNum)
+          const barPct = Math.round((c.followersNum / maxFollowers) * 100)
+          return (
+            <div key={c.username} style={{ padding: '18px 20px', borderRadius: 16, background: 'rgba(255,255,255,0.02)', border: `1px solid ${borderColor}` }}>
+              {/* 상단: 배지 + 이름 + 버튼 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {badge && <span style={{ fontSize: 18 }}>{badge}</span>}
+                  <div>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>@{c.username}</p>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{c.displayName}</p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button
+                    onClick={() => onSearchCreator(c.username, c.category)}
+                    style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,107,107,0.1)', border: '1px solid rgba(255,107,107,0.25)', color: '#FF8E53' }}
+                  >📊 이 계정 영상 보기</button>
+                  <a
+                    href={c.tiktokUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                  >↗ TikTok</a>
+                </div>
+              </div>
+
+              {/* 팔로워 바 */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>팔로워</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{c.followers}</span>
+                </div>
+                <div style={{ height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${barPct}%`, background: 'linear-gradient(90deg,#FF6B6B,#FF8E53)', borderRadius: 3 }} />
+                </div>
+              </div>
+
+              {/* 성장 지표 */}
+              <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
+                <div>
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 3 }}>이번 주 증가</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: '#4ade80' }}>
+                    {c.followerGrowthNum} <span style={{ fontSize: 12 }}>{c.followerGrowthPct}</span>
+                  </p>
+                </div>
+                <div>
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 3 }}>평균 조회수</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>{c.avgViews}</p>
+                </div>
+              </div>
+
+              {/* 키워드 태그 */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {c.keywords.map(kw => (
+                  <span
+                    key={kw}
+                    style={{ padding: '3px 9px', borderRadius: 5, fontSize: 11, fontWeight: 600, background: 'rgba(255,142,83,0.08)', border: '1px solid rgba(255,142,83,0.18)', color: 'rgba(255,200,150,0.8)' }}
+                  >#{kw}</span>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 const DISCOVER_LOADING_MSGS = [
   '🔍 TikTok에서 트렌드 영상 수집 중...',
   '📊 조회수 데이터 분석 중...',
@@ -327,6 +507,7 @@ function Discover() {
   const [apiConnected, setApiConnected] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Video | null>(null)
+  const [creatorCategory, setCreatorCategory] = useState<Category>('beauty')
 
   useEffect(() => {
     loadCategory('beauty')
@@ -390,7 +571,7 @@ function Discover() {
   function switchTab(tab: TabType) {
     setActiveTab(tab)
     setVideos([])
-    if (tab === 'search') return
+    if (tab === 'search' || tab === 'creator') return
     loadCategory(tab)
   }
 
@@ -406,9 +587,11 @@ function Discover() {
     { key: 'lifestyle', label: '🌿 라이프스타일' },
     { key: 'vlog', label: '🎬 Vlog' },
     { key: 'search', label: '🔍 키워드 검색' },
+    { key: 'creator', label: '👤 크리에이터' },
   ]
 
   const showSidebar = activeTab !== 'search'
+  const sidebarCategory: Category = activeTab === 'creator' ? creatorCategory : (activeTab as Category)
 
   return (
     <div style={{ background: '#08080C', minHeight: '100vh', color: '#fff', paddingTop: 60 }}>
@@ -457,9 +640,19 @@ function Discover() {
 
         {/* 2단 레이아웃: 그리드 + 사이드바 */}
         <div style={{ display: 'grid', gridTemplateColumns: showSidebar ? '1fr 260px' : '1fr', gap: 24, alignItems: 'start' }}>
-          {/* 좌측: 영상 그리드 */}
+          {/* 좌측: 영상 그리드 / 크리에이터 */}
           <div>
-            {loading ? (
+            {activeTab === 'creator' ? (
+              <CreatorTab
+                category={creatorCategory}
+                onCategoryChange={(cat) => setCreatorCategory(cat)}
+                onSearchCreator={(username, cat) => {
+                  setActiveTab(cat)
+                  setQuery(username)
+                  search(username)
+                }}
+              />
+            ) : loading ? (
               <div style={{ position: 'relative' }}>
                 {/* 진행바 */}
                 <div style={{ marginBottom: 16 }}>
@@ -496,7 +689,7 @@ function Discover() {
           {/* 우측: 실시간 트렌드 사이드바 */}
           {showSidebar && (
             <TrendSidebar
-              category={activeTab as Category}
+              category={sidebarCategory}
               onClickTag={clickHashtag}
             />
           )}
