@@ -656,7 +656,10 @@ function Discover() {
   function switchTab(tab: TabType) {
     setActiveTab(tab)
     setVideos([])
-    if (tab === 'search' || tab === 'creator') return
+    if (tab === 'search' || tab === 'creator') {
+      setApiError(null)
+      return
+    }
     loadCategory(tab)
   }
 
