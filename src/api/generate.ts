@@ -1,8 +1,15 @@
+export interface ProductItem {
+  name: string
+  url?: string
+  features?: string
+}
+
 export interface GenerateInput {
   referenceUrls: string[]
   productName: string
   productUrl?: string
   productFeatures?: string
+  products?: ProductItem[]
   tone: string
   duration: number
   targetAudience: string
@@ -115,13 +122,17 @@ export async function generateScript(input: GenerateInput): Promise<ScriptOutput
 
   const hookContext = input.hookType ? `\n분석된 후킹 유형: ${input.hookType}` : ''
 
+  const products = input.products && input.products.length > 0 ? input.products : [{ name: input.productName, url: input.productUrl, features: input.productFeatures }]
+  const isMultiProduct = products.length > 1
+  const productContext = isMultiProduct
+    ? `등장 제품 목록:\n${products.map((p, i) => `${i + 1}. ${p.name}${p.features ? ` - ${p.features}` : ''}${p.url ? ` (${p.url})` : ''}`).join('\n')}\n여러 제품을 자연스럽게 비교하거나 함께 소개하는 스크립트 작성`
+    : `제품/주제: ${products[0].name}\n제품 링크: ${products[0].url || '없음'}\n제품 특징: ${products[0].features || '없음'}`
+
   const prompt = `당신은 북미 TikTok K-뷰티 콘텐츠 전문 스크립트 라이터입니다.
 아래 정보를 바탕으로 실제로 바로 촬영할 수 있는 스크립트를 작성하세요.
 
 === 입력 정보 ===
-제품/주제: ${input.productName}
-제품 링크: ${input.productUrl || '없음'}
-제품 특징: ${input.productFeatures || '없음'}
+${productContext}
 영상 톤: ${input.tone}
 영상 길이: ${input.duration}초
 타겟: ${input.targetAudience}

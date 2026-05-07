@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'r
 import { searchTikTok, getTrends } from './api/tiktok'
 import VideoModal from './components/VideoModal'
 import { getDailyTrends, DailyTrendData, getCreators, Creator, CreatorSort } from './api/trends'
-import { generateScript, ScriptOutput, GenerateInput } from './api/generate'
+import { generateScript, ScriptOutput, GenerateInput, ProductItem } from './api/generate'
 
 const API_BASE = 'https://glowstudio-api.up.railway.app/api'
 
@@ -964,9 +964,7 @@ function GuideTab({ data }: { data: ScriptOutput['shootingGuide'] }) {
 function Generate() {
   const [searchParams] = useSearchParams()
   const [refs, setRefs] = useState<string[]>([''])
-  const [productName, setProductName] = useState('')
-  const [productUrl, setProductUrl] = useState('')
-  const [productFeatures, setProductFeatures] = useState('')
+  const [products, setProducts] = useState<ProductItem[]>([{ name: '', url: '', features: '' }])
   const [tone, setTone] = useState('gen-z')
   const [duration, setDuration] = useState(45)
   const [target, setTarget] = useState('Gen Z')
@@ -981,7 +979,7 @@ function Generate() {
     const hookType = searchParams.get('hookType')
     const refUrl = searchParams.get('refUrl')
     const dur = searchParams.get('duration')
-    if (topic) setProductName(topic)
+    if (topic) setProducts([{ name: topic, url: '', features: '' }])
     if (refUrl) setRefs([refUrl])
     if (dur) setDuration(Number(dur) || 45)
     if (hookType) {
@@ -994,8 +992,14 @@ function Generate() {
   function removeRef(i: number) { setRefs(refs.filter((_, idx) => idx !== i)) }
   function updateRef(i: number, val: string) { setRefs(refs.map((r, idx) => idx === i ? val : r)) }
 
+  function addProduct() { if (products.length < 5) setProducts([...products, { name: '', url: '', features: '' }]) }
+  function removeProduct(i: number) { setProducts(products.filter((_, idx) => idx !== i)) }
+  function updateProduct(i: number, field: keyof ProductItem, val: string) {
+    setProducts(products.map((p, idx) => idx === i ? { ...p, [field]: val } : p))
+  }
+
   async function handleGenerate() {
-    if (!productName.trim()) return
+    if (!products[0]?.name.trim()) return
     setLoading(true); setResult(null)
     let msgIdx = 0
     setLoadingMsg(LOADING_MESSAGES[0])
@@ -1003,11 +1007,13 @@ function Generate() {
       msgIdx = (msgIdx + 1) % LOADING_MESSAGES.length
       setLoadingMsg(LOADING_MESSAGES[msgIdx])
     }, 2500)
+    const validProducts = products.filter(p => p.name.trim()).map(p => ({ name: p.name, url: p.url || undefined, features: p.features || undefined }))
     const input: GenerateInput = {
       referenceUrls: refs.filter(r => r.trim()),
-      productName,
-      productUrl: productUrl || undefined,
-      productFeatures: productFeatures || undefined,
+      productName: validProducts[0]?.name || '',
+      productUrl: validProducts[0]?.url,
+      productFeatures: validProducts[0]?.features,
+      products: validProducts,
       tone,
       duration,
       targetAudience: target,
@@ -1078,19 +1084,39 @@ function Generate() {
         {/* STEP 2 */}
         <div style={sectionStyle}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#FF8E53', letterSpacing: 1.5, marginBottom: 14 }}>STEP 2. 내 제품 / 주제</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>제품명 또는 주제 *</label>
-              <input value={productName} onChange={e => setProductName(e.target.value)} placeholder="예: 라운드랩 자작나무 에센스" style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>제품 링크 (선택 — 쿠팡/올리브영/아마존 등)</label>
-              <input value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="https://..." style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>제품 특징 / 어필 포인트 (선택)</label>
-              <input value={productFeatures} onChange={e => setProductFeatures(e.target.value)} placeholder="예: 수분 24시간 지속, 민감성 피부 OK, 한방 성분" style={inputStyle} />
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {products.map((p, i) => (
+              <div key={i} style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5 }}>
+                    {products.length > 1 ? `제품 ${i + 1}` : '제품'}
+                  </span>
+                  {products.length > 1 && (
+                    <button onClick={() => removeProduct(i)} style={{ padding: '2px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 14, lineHeight: 1.4 }}>×</button>
+                  )}
+                </div>
+                <div>
+                  <label style={labelStyle}>제품명 또는 주제 {i === 0 ? '*' : '(선택)'}</label>
+                  <input value={p.name} onChange={e => updateProduct(i, 'name', e.target.value)} placeholder="예: 라운드랩 자작나무 에센스" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>제품 링크 (선택 — 쿠팡/올리브영/아마존 등)</label>
+                  <input value={p.url || ''} onChange={e => updateProduct(i, 'url', e.target.value)} placeholder="https://..." style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>특징 / 어필 포인트 (선택)</label>
+                  <input value={p.features || ''} onChange={e => updateProduct(i, 'features', e.target.value)} placeholder="예: 수분 24시간 지속, 민감성 피부 OK" style={inputStyle} />
+                </div>
+              </div>
+            ))}
+            {products.length < 5 && (
+              <button onClick={addProduct} style={{ alignSelf: 'flex-start', padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.45)', cursor: 'pointer' }}>
+                + 제품 추가 ({products.length}/5)
+              </button>
+            )}
+            {products.length >= 2 && (
+              <p style={{ fontSize: 11, color: '#FF8E53', marginTop: 2 }}>💡 제품이 2개 이상이면 "비교 리뷰" 톤을 추천해요</p>
+            )}
           </div>
         </div>
 
@@ -1101,7 +1127,15 @@ function Generate() {
             <div>
               <label style={labelStyle}>영상 톤</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {[['gen-z', 'Gen Z 🔥'], ['professional', '전문가 💼'], ['funny', '유머 😂'], ['tutorial', '튜토리얼 📚'], ['storytelling', '스토리텔링 📖'], ['review', '리뷰어 ⭐']].map(([v, l]) => (
+                {([
+                  ['gen-z', 'Gen Z 🔥'],
+                  ['professional', '전문가 💼'],
+                  ['funny', '유머 😂'],
+                  ['tutorial', '튜토리얼 📚'],
+                  ['storytelling', '스토리텔링 📖'],
+                  ['review', '리뷰어 ⭐'],
+                  ...(products.length >= 2 ? [['compare', '비교 리뷰 ⚖️']] : []),
+                ] as [string, string][]).map(([v, l]) => (
                   <OptionBtn key={v} value={v} current={tone} onClick={() => setTone(v)}>{l}</OptionBtn>
                 ))}
               </div>
@@ -1134,7 +1168,7 @@ function Generate() {
           </div>
         </div>
 
-        <button onClick={handleGenerate} disabled={loading || !productName.trim()} style={{ width: '100%', padding: '16px', borderRadius: 12, fontWeight: 700, fontSize: 15, background: loading || !productName.trim() ? 'rgba(255,107,107,0.25)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading || !productName.trim() ? 'not-allowed' : 'pointer', marginBottom: 36 }}>
+        <button onClick={handleGenerate} disabled={loading || !products[0]?.name.trim()} style={{ width: '100%', padding: '16px', borderRadius: 12, fontWeight: 700, fontSize: 15, background: loading || !products[0]?.name.trim() ? 'rgba(255,107,107,0.25)' : 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: loading || !products[0]?.name.trim() ? 'not-allowed' : 'pointer', marginBottom: 36 }}>
           {loading ? loadingMsg : '🎬 스크립트 생성하기'}
         </button>
 
