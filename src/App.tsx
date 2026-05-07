@@ -86,7 +86,17 @@ const SORT_OPTIONS: { value: SortFilter; label: string }[] = [
   { value: 'engagement', label: '💬 참여율순' },
 ]
 
-const FONTS = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');`
+const FONTS = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=Fredoka+One&display=swap');`
+
+const LOGO_STYLE: React.CSSProperties = {
+  fontFamily: "'Fredoka One', cursive",
+  fontSize: 22,
+  fontWeight: 400,
+  letterSpacing: 0.5,
+  background: 'linear-gradient(90deg, #FF6B6B, #FF8E53)',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+}
 
 function Nav({ active }: { active: string }) {
   return (
@@ -96,11 +106,7 @@ function Nav({ active }: { active: string }) {
       borderBottom: '1px solid rgba(255,255,255,0.07)',
       display: 'flex', alignItems: 'center', padding: '0 32px', height: 60, gap: 32,
     }}>
-      <Link to="/" style={{
-        fontSize: 18, fontWeight: 800, letterSpacing: 2,
-        background: 'linear-gradient(90deg, #FF6B6B, #FF8E53)',
-        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-      }}>GLOWSTUDIO AI</Link>
+      <Link to="/" style={LOGO_STYLE}>amplilab</Link>
       <div style={{ display: 'flex', gap: 4 }}>
         {[['/', '홈'], ['/discover', '디스커버'], ['/generate', '생성'], ['/analyze', '분석']].map(([path, label]) => (
           <Link key={path} to={path} style={{
@@ -153,33 +159,10 @@ function Home() {
         </div>
       </div>
 
-      {/* Features */}
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '60px 32px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 52 }}>
-          <p style={{ color: '#FF8E53', fontSize: 11, fontWeight: 700, letterSpacing: 2, marginBottom: 10 }}>FEATURES</p>
-          <h2 style={{ fontSize: 36, fontWeight: 800, letterSpacing: -1 }}>5가지 핵심 기능</h2>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
-          {[
-            { emoji: '🔍', title: '디스커버', desc: '북미 트렌딩 콘텐츠 실시간 탐색', c: '#FF6B6B' },
-            { emoji: '✍️', title: '생성', desc: 'AI 스크립트 3분 완성', c: '#FF8E53' },
-            { emoji: '📊', title: '분석', desc: '조회수와 전환율 동시 분석', c: '#FFB347' },
-            { emoji: '🚀', title: '성장', desc: '브랜드 매칭으로 수익화', c: '#FF6B6B' },
-            { emoji: '📦', title: '제품 허브', desc: '제품 링크 → 촬영 분석', c: '#FF8E53' },
-          ].map(f => (
-            <div key={f.title} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '26px 22px' }}>
-              <div style={{ fontSize: 30, marginBottom: 14 }}>{f.emoji}</div>
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{f.title}</h3>
-              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <footer style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '36px 32px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>
-        <p style={{ fontWeight: 800, fontSize: 15, marginBottom: 6, color: '#fff' }}>GLOWSTUDIO AI</p>
+        <p style={{ ...LOGO_STYLE, display: 'block', marginBottom: 6 }}>amplilab</p>
         <p>북미 K-뷰티 콘텐츠 크리에이터를 위한 AI 운영체제</p>
-        <p style={{ marginTop: 14, fontSize: 11 }}>© 2025 GLOWSTUDIO AI. 모든 권리 보유.</p>
+        <p style={{ marginTop: 14, fontSize: 11 }}>© 2025 amplilab. 모든 권리 보유.</p>
       </footer>
     </div>
   )
