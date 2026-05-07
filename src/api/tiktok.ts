@@ -79,7 +79,8 @@ export async function searchTikTok(hashtag: string, limit = 30): Promise<Video[]
   const url = `${BASE_URL}?token=${APIFY_TOKEN}&timeout=60`
   const body = {
     hashtags: [hashtag.replace(/^#/, '')],
-    resultsPerPage: limit,
+    resultsPerPage: 30,
+    maxItems: 50,
     maxProfilesPerQuery: 1,
     shouldDownloadVideos: false,
     shouldDownloadCovers: true,
@@ -92,7 +93,9 @@ export async function searchTikTok(hashtag: string, limit = 30): Promise<Video[]
   })
   if (!res.ok) throw new Error(`Apify error ${res.status}`)
   const items: ApifyItem[] = await res.json()
-  return dedup(items).slice(0, limit).map(mapItem)
+  const unique = dedup(items)
+  console.log(`[searchTikTok] 수집된 영상: ${items.length}개, 중복제거 후: ${unique.length}개`)
+  return unique.slice(0, limit).map(mapItem)
 }
 
 export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit = 30): Promise<Video[]> {
@@ -105,7 +108,8 @@ export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit
   const url = `${BASE_URL}?token=${APIFY_TOKEN}&timeout=60`
   const body = {
     hashtags,
-    resultsPerPage: Math.ceil((limit * 1.5) / hashtags.length),
+    resultsPerPage: Math.ceil(40 / hashtags.length),
+    maxItems: 50,
     shouldDownloadCovers: true,
     shouldDownloadVideos: false,
   }
@@ -118,6 +122,7 @@ export async function getTrends(category: 'beauty' | 'lifestyle' | 'vlog', limit
   if (!res.ok) throw new Error(`Apify error ${res.status}`)
   const items: ApifyItem[] = await res.json()
   const unique = dedup(items)
+  console.log(`[getTrends:${category}] 수집된 영상: ${items.length}개, 중복제거 후: ${unique.length}개`)
   unique.sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
-  return unique.slice(0, limit).map(mapItem)
+  return unique.slice(0, 30).map(mapItem)
 }
