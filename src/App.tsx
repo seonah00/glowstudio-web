@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { HashRouter, Routes, Route, Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { searchTikTok, getTrends, searchTikTokByUser } from './api/tiktok'
 import VideoModal from './components/VideoModal'
 import { getDailyTrends, DailyTrendData } from './api/trends'
@@ -1037,6 +1037,7 @@ function GuideTab({ data }: { data: ScriptOutput['shootingGuide'] }) {
 /* ── Generate ── */
 function Generate() {
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   const [refs, setRefs] = useState<string[]>([''])
   const [products, setProducts] = useState<ProductItem[]>([{ name: '', url: '', features: '' }])
   const [tone, setTone] = useState('gen-z')
@@ -1049,6 +1050,17 @@ function Generate() {
   const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0])
 
   useEffect(() => {
+    const s = location.state as { fromPlanning?: boolean; refUrl?: string; productName?: string; hookType?: string; duration?: number; concept?: string } | null
+    if (s?.fromPlanning) {
+      if (s.refUrl) setRefs([s.refUrl])
+      if (s.productName) setProducts([{ name: s.productName, url: '', features: s.concept || '' }])
+      if (s.duration) setDuration(s.duration)
+      if (s.hookType) {
+        const toneMap: Record<string, string> = { '궁금증형': 'gen-z', '공감형': 'storytelling', '정보형': 'tutorial', '유머형': 'funny', '전문가형': 'professional' }
+        setTone(toneMap[s.hookType] || 'gen-z')
+      }
+      return
+    }
     const topic = searchParams.get('topic')
     const hookType = searchParams.get('hookType')
     const refUrl = searchParams.get('refUrl')

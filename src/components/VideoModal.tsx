@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Video } from '../api/tiktok'
 import { analyzeVideo, analyzeVideoWithFrames, AnalysisResult, FrameAnalysisResult, ServerAnalysisResponse } from '../api/analyze'
+import { generatePlanning, PlanningResult, PlanningAnalysis } from '../api/planning'
 
 function formatCount(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -14,7 +15,7 @@ interface Props {
   onClose: () => void
 }
 
-type Step = 1 | 2 | 3
+type Step = 1 | 2 | 3 | 4
 type AnalyzePhase = 'download' | 'extract' | 'vision'
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
@@ -292,6 +293,11 @@ export default function VideoModal({ video, onClose }: Props) {
   const [analyzePct, setAnalyzePct] = useState(0)
   const [myProduct, setMyProduct] = useState('')
   const [targetAudience, setTargetAudience] = useState<'genz' | 'millennial' | 'all'>('genz')
+  const [myTone, setMyTone] = useState('')
+  const [planDuration, setPlanDuration] = useState(45)
+  const [planning, setPlanning] = useState<PlanningResult | null>(null)
+  const [planningLoading, setPlanningLoading] = useState(false)
+  const [planningError, setPlanningError] = useState<string | null>(null)
 
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const intervalsRef = useRef<ReturnType<typeof setInterval>[]>([])
@@ -360,6 +366,71 @@ export default function VideoModal({ video, onClose }: Props) {
     })
     navigate(`/generate?${params.toString()}`)
     onClose()
+  }
+
+  function buildPlanningAnalysis(): PlanningAnalysis {
+    if (frameResult) {
+      return {
+        hookType: frameResult.analysis.hook_analysis.type,
+        hookDescription: frameResult.analysis.hook_analysis.description,
+        viralFactors: frameResult.analysis.viral_factors,
+        copyableElements: frameResult.analysis.copyable_elements,
+      }
+    }
+    return {
+      hookType: analysis?.hook_type ?? '궁금증형',
+      hookDescription: analysis?.hook_analysis ?? '',
+      viralFactors: analysis?.best_elements ?? [],
+      copyableElements: analysis?.copyable_formula ? [analysis.copyable_formula] : [],
+    }
+  }
+
+  async function runGeneratePlanning() {
+    if (!myProduct.trim()) return
+    setPlanningLoading(true)
+    setPlanningError(null)
+    try {
+      const result = await generatePlanning({
+        referenceVideo: video,
+        analysis: buildPlanningAnalysis(),
+        myProduct: myProduct.trim(),
+        myTone: myTone.trim() || undefined,
+        duration: planDuration,
+      })
+      setPlanning(result)
+    } catch (e) {
+      setPlanningError(e instanceof Error ? e.message : '기획안 생성 실패')
+    }
+    setPlanningLoading(false)
+  }
+
+  function goToGenerateFromPlanning() {
+    if (!planning) return
+    const hookType = frameResult?.analysis.hook_analysis.type ?? analysis?.hook_type ?? '궁금증형'
+    navigate('/generate', {
+      state: {
+        refUrl: video.webVideoUrl,
+        productName: myProduct,
+        hookType,
+        duration: planDuration,
+        concept: planning.concept,
+        fromPlanning: true,
+      },
+    })
+    onClose()
+  }
+
+  function copyPlanning() {
+    if (!planning) return
+    const text = [
+      `📌 영상 컨셉\n${planning.concept}`,
+      `\n🎣 후킹 전략\n${planning.hookStrategy}`,
+      `\n📝 씬 구성\n${planning.scenes.map(s => `씬${s.sceneNum} [${s.timeRange}] ${s.role}: ${s.description}`).join('\n')}`,
+      `\n🎥 촬영 포인트\n${planning.shootingPoints.map(p => `• ${p}`).join('\n')}`,
+      `\n🏷 추천 해시태그\n${planning.hashtags.join(' ')}`,
+      `\n✏️ 제목/캡션 후보\n${planning.titleOptions.map((t, i) => `${i + 1}. ${t}`).join('\n')}`,
+    ].join('\n')
+    navigator.clipboard.writeText(text).catch(() => {})
   }
 
   const overlay: React.CSSProperties = {
@@ -431,11 +502,151 @@ export default function VideoModal({ video, onClose }: Props) {
                   ? <FrameResultView data={frameResult.analysis} framesAnalyzed={frameResult.framesAnalyzed} />
                   : analysis ? <MetaResultView data={analysis} /> : null
                 }
-                <button onClick={() => setStep(3)} style={{ width: '100%', padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                  🎬 이 스타일로 내 영상 만들기 →
-                </button>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setStep(4)} style={{ flex: 1, padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: 'linear-gradient(135deg,#6B6BFF,#8E53FF)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                    📋 기획안 만들기 →
+                  </button>
+                  <button onClick={() => setStep(3)} style={{ flex: 1, padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                    🎬 스크립트 생성 →
+                  </button>
+                </div>
               </>
             ) : null}
+          </>
+        )}
+
+        {/* ── Step 4: 기획안 생성 ── */}
+        {step === 4 && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <button onClick={() => setStep(2)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 16, padding: 0 }}>←</button>
+              <h3 style={{ fontWeight: 700, fontSize: 15 }}>📋 나만의 기획안 만들기</h3>
+              <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 18 }}>✕</button>
+            </div>
+
+            {/* 참고 영상 정보 */}
+            <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(107,107,255,0.06)', border: '1px solid rgba(107,107,255,0.15)', marginBottom: 20, display: 'flex', gap: 16, fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
+              <span>참고: @{frameResult?.videoInfo.authorName ?? video.authorMeta.name}</span>
+              <span>후킹: {frameResult?.analysis.hook_analysis.type ?? analysis?.hook_type ?? '—'}</span>
+              <span>길이: {video.videoMeta.duration}초</span>
+            </div>
+
+            {/* 입력 폼 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: 7, letterSpacing: 1 }}>내 제품 또는 주제 *</label>
+                <input
+                  value={myProduct}
+                  onChange={e => setMyProduct(e.target.value)}
+                  placeholder="예) 라운드랩 자작나무 에센스"
+                  style={{ width: '100%', padding: '11px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: 7, letterSpacing: 1 }}>내 채널 컨셉/톤 (선택)</label>
+                <input
+                  value={myTone}
+                  onChange={e => setMyTone(e.target.value)}
+                  placeholder="예: 30대 직장인, 자연주의 스킨케어, 친근한 말투"
+                  style={{ width: '100%', padding: '11px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: 10, letterSpacing: 1 }}>영상 길이</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[15, 30, 45, 60, 90].map(d => (
+                    <button key={d} onClick={() => setPlanDuration(d)} style={{ padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', background: planDuration === d ? 'rgba(107,107,255,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${planDuration === d ? 'rgba(107,107,255,0.4)' : 'rgba(255,255,255,0.1)'}`, color: planDuration === d ? '#8E8EFF' : 'rgba(255,255,255,0.5)', fontWeight: planDuration === d ? 700 : 400 }}>
+                      {d}초
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={runGeneratePlanning}
+              disabled={!myProduct.trim() || planningLoading}
+              style={{ width: '100%', padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: !myProduct.trim() || planningLoading ? 'rgba(107,107,255,0.3)' : 'linear-gradient(135deg,#6B6BFF,#8E53FF)', color: '#fff', border: 'none', cursor: !myProduct.trim() || planningLoading ? 'not-allowed' : 'pointer', marginBottom: 20 }}
+            >
+              {planningLoading ? '🤖 기획안 생성 중...' : '🎬 기획안 생성하기'}
+            </button>
+
+            {planningError && (
+              <p style={{ fontSize: 12, color: '#FF6B6B', marginBottom: 16 }}>⚠ {planningError}</p>
+            )}
+
+            {/* 생성된 기획안 */}
+            {planning && (
+              <>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {/* 컨셉 */}
+                  <Card>
+                    <CardLabel>📌 영상 컨셉</CardLabel>
+                    <CardText>{planning.concept}</CardText>
+                  </Card>
+
+                  {/* 후킹 전략 */}
+                  <Card>
+                    <CardLabel>🎣 후킹 전략 (참고 영상 스타일 적용)</CardLabel>
+                    <CardText>{planning.hookStrategy}</CardText>
+                  </Card>
+
+                  {/* 씬 구성 */}
+                  <Card>
+                    <CardLabel>📝 씬 구성</CardLabel>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {planning.scenes.map((s, i) => (
+                        <div key={s.sceneNum} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: i < planning.scenes.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                          <div style={{ flexShrink: 0, width: 56 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#8E8EFF' }}>씬 {s.sceneNum}</span>
+                            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>{s.timeRange}</p>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.5)', marginRight: 6 }}>{s.role}</span>
+                            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, marginTop: 3 }}>{s.description}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* 촬영 포인트 */}
+                  <Card>
+                    <CardLabel>🎥 촬영 포인트</CardLabel>
+                    {planning.shootingPoints.map((p, i) => (
+                      <p key={i} style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>• {p}</p>
+                    ))}
+                  </Card>
+
+                  {/* 해시태그 */}
+                  <Card>
+                    <CardLabel>🏷 추천 해시태그</CardLabel>
+                    <p style={{ fontSize: 12, color: '#8E8EFF', lineHeight: 1.8 }}>{planning.hashtags.join(' ')}</p>
+                  </Card>
+
+                  {/* 제목/캡션 후보 */}
+                  <Card>
+                    <CardLabel>✏️ 제목/캡션 후보</CardLabel>
+                    {planning.titleOptions.map((t, i) => (
+                      <div key={i} style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', marginBottom: i < planning.titleOptions.length - 1 ? 8 : 0 }}>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontWeight: 700 }}>{['후킹형', '정보형', '공감형'][i] ?? ''} </span>
+                        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 3 }}>{t}</p>
+                      </div>
+                    ))}
+                  </Card>
+                </div>
+
+                {/* 하단 버튼 */}
+                <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                  <button onClick={goToGenerateFromPlanning} style={{ flex: 2, padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: 'linear-gradient(135deg,#FF6B6B,#FF8E53)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                    ✍️ 스크립트까지 생성하기 →
+                  </button>
+                  <button onClick={copyPlanning} style={{ flex: 1, padding: '13px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', cursor: 'pointer' }}>
+                    📋 복사
+                  </button>
+                </div>
+              </>
+            )}
           </>
         )}
 
